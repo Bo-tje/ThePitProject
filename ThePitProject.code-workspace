@@ -1,0 +1,879 @@
+{
+	"folders": [
+		{
+			"name": "ThePitProject",
+			"path": "."
+		},
+		{
+			"name": "UE5",
+			"path": "/home/bo/Documents/Unreal/Linux_Unreal_Engine_5.8.2"
+		}
+	],
+	"settings": {
+		"js/ts.tsc.autoDetect": "off",
+		"npm.autoDetect": "off",
+		"terminal.integrated.env.linux": {
+			"PATH": "/home/bo/Documents/Unreal/Linux_Unreal_Engine_5.8.2/Engine/Binaries/ThirdParty/DotNet/10.0/linux-x64:${env:PATH}",
+			"DOTNET_ROOT": "/home/bo/Documents/Unreal/Linux_Unreal_Engine_5.8.2/Engine/Binaries/ThirdParty/DotNet/10.0/linux-x64",
+			"DOTNET_HOST_PATH": "/home/bo/Documents/Unreal/Linux_Unreal_Engine_5.8.2/Engine/Binaries/ThirdParty/DotNet/10.0/linux-x64/dotnet",
+			"DOTNET_MULTILEVEL_LOOKUP": "0",
+			"DOTNET_ROLL_FORWARD": "LatestMajor"
+		}
+	},
+	"extensions": {
+		"recommendations": [
+			"ms-vscode.cpptools",
+			"ms-dotnettools.csharp"
+		]
+	},
+	"tasks": {
+		"version": "2.0.0",
+		"tasks": [
+			{
+				"label": "ThePitProject Linux Debug Build",
+				"group": "build",
+				"command": "Engine/Build/BatchFiles/Linux/Build.sh",
+				"args": [
+					"ThePitProject",
+					"Linux",
+					"Debug",
+					"/home/bo/Projects/The pit project/ThePitProject/ThePitProject.uproject",
+					"-waitmutex"
+				],
+				"problemMatcher": "$msCompile",
+				"type": "shell",
+				"options": {
+					"cwd": "/home/bo/Documents/Unreal/Linux_Unreal_Engine_5.8.2"
+				}
+			},
+			{
+				"label": "ThePitProject Linux Debug Rebuild",
+				"group": "build",
+				"command": "Engine/Build/BatchFiles/Linux/Build.sh",
+				"args": [
+					"ThePitProject",
+					"Linux",
+					"Debug",
+					"/home/bo/Projects/The pit project/ThePitProject/ThePitProject.uproject",
+					"-waitmutex"
+				],
+				"problemMatcher": "$msCompile",
+				"dependsOn": [
+					"ThePitProject Linux Debug Clean"
+				],
+				"type": "shell",
+				"options": {
+					"cwd": "/home/bo/Documents/Unreal/Linux_Unreal_Engine_5.8.2"
+				}
+			},
+			{
+				"label": "ThePitProject Linux Debug Clean",
+				"group": "build",
+				"command": "Engine/Build/BatchFiles/Linux/Build.sh",
+				"args": [
+					"ThePitProject",
+					"Linux",
+					"Debug",
+					"/home/bo/Projects/The pit project/ThePitProject/ThePitProject.uproject",
+					"-waitmutex",
+					"-clean"
+				],
+				"problemMatcher": "$msCompile",
+				"type": "shell",
+				"options": {
+					"cwd": "/home/bo/Documents/Unreal/Linux_Unreal_Engine_5.8.2"
+				}
+			},
+			{
+				"label": "ThePitProject Linux DebugGame Build",
+				"group": "build",
+				"command": "Engine/Build/BatchFiles/Linux/Build.sh",
+				"args": [
+					"ThePitProject",
+					"Linux",
+					"DebugGame",
+					"/home/bo/Projects/The pit project/ThePitProject/ThePitProject.uproject",
+					"-waitmutex"
+				],
+				"problemMatcher": "$msCompile",
+				"type": "shell",
+				"options": {
+					"cwd": "/home/bo/Documents/Unreal/Linux_Unreal_Engine_5.8.2"
+				}
+			},
+			{
+				"label": "ThePitProject Linux DebugGame Rebuild",
+				"group": "build",
+				"command": "Engine/Build/BatchFiles/Linux/Build.sh",
+				"args": [
+					"ThePitProject",
+					"Linux",
+					"DebugGame",
+					"/home/bo/Projects/The pit project/ThePitProject/ThePitProject.uproject",
+					"-waitmutex"
+				],
+				"problemMatcher": "$msCompile",
+				"dependsOn": [
+					"ThePitProject Linux DebugGame Clean"
+				],
+				"type": "shell",
+				"options": {
+					"cwd": "/home/bo/Documents/Unreal/Linux_Unreal_Engine_5.8.2"
+				}
+			},
+			{
+				"label": "ThePitProject Linux DebugGame Clean",
+				"group": "build",
+				"command": "Engine/Build/BatchFiles/Linux/Build.sh",
+				"args": [
+					"ThePitProject",
+					"Linux",
+					"DebugGame",
+					"/home/bo/Projects/The pit project/ThePitProject/ThePitProject.uproject",
+					"-waitmutex",
+					"-clean"
+				],
+				"problemMatcher": "$msCompile",
+				"type": "shell",
+				"options": {
+					"cwd": "/home/bo/Documents/Unreal/Linux_Unreal_Engine_5.8.2"
+				}
+			},
+			{
+				"label": "ThePitProject Linux Development Build",
+				"group": "build",
+				"command": "Engine/Build/BatchFiles/Linux/Build.sh",
+				"args": [
+					"ThePitProject",
+					"Linux",
+					"Development",
+					"/home/bo/Projects/The pit project/ThePitProject/ThePitProject.uproject",
+					"-waitmutex"
+				],
+				"problemMatcher": "$msCompile",
+				"type": "shell",
+				"options": {
+					"cwd": "/home/bo/Documents/Unreal/Linux_Unreal_Engine_5.8.2"
+				}
+			},
+			{
+				"label": "ThePitProject Linux Development Rebuild",
+				"group": "build",
+				"command": "Engine/Build/BatchFiles/Linux/Build.sh",
+				"args": [
+					"ThePitProject",
+					"Linux",
+					"Development",
+					"/home/bo/Projects/The pit project/ThePitProject/ThePitProject.uproject",
+					"-waitmutex"
+				],
+				"problemMatcher": "$msCompile",
+				"dependsOn": [
+					"ThePitProject Linux Development Clean"
+				],
+				"type": "shell",
+				"options": {
+					"cwd": "/home/bo/Documents/Unreal/Linux_Unreal_Engine_5.8.2"
+				}
+			},
+			{
+				"label": "ThePitProject Linux Development Clean",
+				"group": "build",
+				"command": "Engine/Build/BatchFiles/Linux/Build.sh",
+				"args": [
+					"ThePitProject",
+					"Linux",
+					"Development",
+					"/home/bo/Projects/The pit project/ThePitProject/ThePitProject.uproject",
+					"-waitmutex",
+					"-clean"
+				],
+				"problemMatcher": "$msCompile",
+				"type": "shell",
+				"options": {
+					"cwd": "/home/bo/Documents/Unreal/Linux_Unreal_Engine_5.8.2"
+				}
+			},
+			{
+				"label": "ThePitProject Linux Test Build",
+				"group": "build",
+				"command": "Engine/Build/BatchFiles/Linux/Build.sh",
+				"args": [
+					"ThePitProject",
+					"Linux",
+					"Test",
+					"/home/bo/Projects/The pit project/ThePitProject/ThePitProject.uproject",
+					"-waitmutex"
+				],
+				"problemMatcher": "$msCompile",
+				"type": "shell",
+				"options": {
+					"cwd": "/home/bo/Documents/Unreal/Linux_Unreal_Engine_5.8.2"
+				}
+			},
+			{
+				"label": "ThePitProject Linux Test Rebuild",
+				"group": "build",
+				"command": "Engine/Build/BatchFiles/Linux/Build.sh",
+				"args": [
+					"ThePitProject",
+					"Linux",
+					"Test",
+					"/home/bo/Projects/The pit project/ThePitProject/ThePitProject.uproject",
+					"-waitmutex"
+				],
+				"problemMatcher": "$msCompile",
+				"dependsOn": [
+					"ThePitProject Linux Test Clean"
+				],
+				"type": "shell",
+				"options": {
+					"cwd": "/home/bo/Documents/Unreal/Linux_Unreal_Engine_5.8.2"
+				}
+			},
+			{
+				"label": "ThePitProject Linux Test Clean",
+				"group": "build",
+				"command": "Engine/Build/BatchFiles/Linux/Build.sh",
+				"args": [
+					"ThePitProject",
+					"Linux",
+					"Test",
+					"/home/bo/Projects/The pit project/ThePitProject/ThePitProject.uproject",
+					"-waitmutex",
+					"-clean"
+				],
+				"problemMatcher": "$msCompile",
+				"type": "shell",
+				"options": {
+					"cwd": "/home/bo/Documents/Unreal/Linux_Unreal_Engine_5.8.2"
+				}
+			},
+			{
+				"label": "ThePitProject Linux Shipping Build",
+				"group": "build",
+				"command": "Engine/Build/BatchFiles/Linux/Build.sh",
+				"args": [
+					"ThePitProject",
+					"Linux",
+					"Shipping",
+					"/home/bo/Projects/The pit project/ThePitProject/ThePitProject.uproject",
+					"-waitmutex"
+				],
+				"problemMatcher": "$msCompile",
+				"type": "shell",
+				"options": {
+					"cwd": "/home/bo/Documents/Unreal/Linux_Unreal_Engine_5.8.2"
+				}
+			},
+			{
+				"label": "ThePitProject Linux Shipping Rebuild",
+				"group": "build",
+				"command": "Engine/Build/BatchFiles/Linux/Build.sh",
+				"args": [
+					"ThePitProject",
+					"Linux",
+					"Shipping",
+					"/home/bo/Projects/The pit project/ThePitProject/ThePitProject.uproject",
+					"-waitmutex"
+				],
+				"problemMatcher": "$msCompile",
+				"dependsOn": [
+					"ThePitProject Linux Shipping Clean"
+				],
+				"type": "shell",
+				"options": {
+					"cwd": "/home/bo/Documents/Unreal/Linux_Unreal_Engine_5.8.2"
+				}
+			},
+			{
+				"label": "ThePitProject Linux Shipping Clean",
+				"group": "build",
+				"command": "Engine/Build/BatchFiles/Linux/Build.sh",
+				"args": [
+					"ThePitProject",
+					"Linux",
+					"Shipping",
+					"/home/bo/Projects/The pit project/ThePitProject/ThePitProject.uproject",
+					"-waitmutex",
+					"-clean"
+				],
+				"problemMatcher": "$msCompile",
+				"type": "shell",
+				"options": {
+					"cwd": "/home/bo/Documents/Unreal/Linux_Unreal_Engine_5.8.2"
+				}
+			},
+			{
+				"label": "ThePitProject LinuxArm64 Debug Build",
+				"group": "build",
+				"command": "Engine/Build/BatchFiles/Linux/Build.sh",
+				"args": [
+					"ThePitProject",
+					"LinuxArm64",
+					"Debug",
+					"/home/bo/Projects/The pit project/ThePitProject/ThePitProject.uproject",
+					"-waitmutex"
+				],
+				"problemMatcher": "$msCompile",
+				"type": "shell",
+				"options": {
+					"cwd": "/home/bo/Documents/Unreal/Linux_Unreal_Engine_5.8.2"
+				}
+			},
+			{
+				"label": "ThePitProject LinuxArm64 Debug Rebuild",
+				"group": "build",
+				"command": "Engine/Build/BatchFiles/Linux/Build.sh",
+				"args": [
+					"ThePitProject",
+					"LinuxArm64",
+					"Debug",
+					"/home/bo/Projects/The pit project/ThePitProject/ThePitProject.uproject",
+					"-waitmutex"
+				],
+				"problemMatcher": "$msCompile",
+				"dependsOn": [
+					"ThePitProject LinuxArm64 Debug Clean"
+				],
+				"type": "shell",
+				"options": {
+					"cwd": "/home/bo/Documents/Unreal/Linux_Unreal_Engine_5.8.2"
+				}
+			},
+			{
+				"label": "ThePitProject LinuxArm64 Debug Clean",
+				"group": "build",
+				"command": "Engine/Build/BatchFiles/Linux/Build.sh",
+				"args": [
+					"ThePitProject",
+					"LinuxArm64",
+					"Debug",
+					"/home/bo/Projects/The pit project/ThePitProject/ThePitProject.uproject",
+					"-waitmutex",
+					"-clean"
+				],
+				"problemMatcher": "$msCompile",
+				"type": "shell",
+				"options": {
+					"cwd": "/home/bo/Documents/Unreal/Linux_Unreal_Engine_5.8.2"
+				}
+			},
+			{
+				"label": "ThePitProject LinuxArm64 DebugGame Build",
+				"group": "build",
+				"command": "Engine/Build/BatchFiles/Linux/Build.sh",
+				"args": [
+					"ThePitProject",
+					"LinuxArm64",
+					"DebugGame",
+					"/home/bo/Projects/The pit project/ThePitProject/ThePitProject.uproject",
+					"-waitmutex"
+				],
+				"problemMatcher": "$msCompile",
+				"type": "shell",
+				"options": {
+					"cwd": "/home/bo/Documents/Unreal/Linux_Unreal_Engine_5.8.2"
+				}
+			},
+			{
+				"label": "ThePitProject LinuxArm64 DebugGame Rebuild",
+				"group": "build",
+				"command": "Engine/Build/BatchFiles/Linux/Build.sh",
+				"args": [
+					"ThePitProject",
+					"LinuxArm64",
+					"DebugGame",
+					"/home/bo/Projects/The pit project/ThePitProject/ThePitProject.uproject",
+					"-waitmutex"
+				],
+				"problemMatcher": "$msCompile",
+				"dependsOn": [
+					"ThePitProject LinuxArm64 DebugGame Clean"
+				],
+				"type": "shell",
+				"options": {
+					"cwd": "/home/bo/Documents/Unreal/Linux_Unreal_Engine_5.8.2"
+				}
+			},
+			{
+				"label": "ThePitProject LinuxArm64 DebugGame Clean",
+				"group": "build",
+				"command": "Engine/Build/BatchFiles/Linux/Build.sh",
+				"args": [
+					"ThePitProject",
+					"LinuxArm64",
+					"DebugGame",
+					"/home/bo/Projects/The pit project/ThePitProject/ThePitProject.uproject",
+					"-waitmutex",
+					"-clean"
+				],
+				"problemMatcher": "$msCompile",
+				"type": "shell",
+				"options": {
+					"cwd": "/home/bo/Documents/Unreal/Linux_Unreal_Engine_5.8.2"
+				}
+			},
+			{
+				"label": "ThePitProject LinuxArm64 Development Build",
+				"group": "build",
+				"command": "Engine/Build/BatchFiles/Linux/Build.sh",
+				"args": [
+					"ThePitProject",
+					"LinuxArm64",
+					"Development",
+					"/home/bo/Projects/The pit project/ThePitProject/ThePitProject.uproject",
+					"-waitmutex"
+				],
+				"problemMatcher": "$msCompile",
+				"type": "shell",
+				"options": {
+					"cwd": "/home/bo/Documents/Unreal/Linux_Unreal_Engine_5.8.2"
+				}
+			},
+			{
+				"label": "ThePitProject LinuxArm64 Development Rebuild",
+				"group": "build",
+				"command": "Engine/Build/BatchFiles/Linux/Build.sh",
+				"args": [
+					"ThePitProject",
+					"LinuxArm64",
+					"Development",
+					"/home/bo/Projects/The pit project/ThePitProject/ThePitProject.uproject",
+					"-waitmutex"
+				],
+				"problemMatcher": "$msCompile",
+				"dependsOn": [
+					"ThePitProject LinuxArm64 Development Clean"
+				],
+				"type": "shell",
+				"options": {
+					"cwd": "/home/bo/Documents/Unreal/Linux_Unreal_Engine_5.8.2"
+				}
+			},
+			{
+				"label": "ThePitProject LinuxArm64 Development Clean",
+				"group": "build",
+				"command": "Engine/Build/BatchFiles/Linux/Build.sh",
+				"args": [
+					"ThePitProject",
+					"LinuxArm64",
+					"Development",
+					"/home/bo/Projects/The pit project/ThePitProject/ThePitProject.uproject",
+					"-waitmutex",
+					"-clean"
+				],
+				"problemMatcher": "$msCompile",
+				"type": "shell",
+				"options": {
+					"cwd": "/home/bo/Documents/Unreal/Linux_Unreal_Engine_5.8.2"
+				}
+			},
+			{
+				"label": "ThePitProject LinuxArm64 Test Build",
+				"group": "build",
+				"command": "Engine/Build/BatchFiles/Linux/Build.sh",
+				"args": [
+					"ThePitProject",
+					"LinuxArm64",
+					"Test",
+					"/home/bo/Projects/The pit project/ThePitProject/ThePitProject.uproject",
+					"-waitmutex"
+				],
+				"problemMatcher": "$msCompile",
+				"type": "shell",
+				"options": {
+					"cwd": "/home/bo/Documents/Unreal/Linux_Unreal_Engine_5.8.2"
+				}
+			},
+			{
+				"label": "ThePitProject LinuxArm64 Test Rebuild",
+				"group": "build",
+				"command": "Engine/Build/BatchFiles/Linux/Build.sh",
+				"args": [
+					"ThePitProject",
+					"LinuxArm64",
+					"Test",
+					"/home/bo/Projects/The pit project/ThePitProject/ThePitProject.uproject",
+					"-waitmutex"
+				],
+				"problemMatcher": "$msCompile",
+				"dependsOn": [
+					"ThePitProject LinuxArm64 Test Clean"
+				],
+				"type": "shell",
+				"options": {
+					"cwd": "/home/bo/Documents/Unreal/Linux_Unreal_Engine_5.8.2"
+				}
+			},
+			{
+				"label": "ThePitProject LinuxArm64 Test Clean",
+				"group": "build",
+				"command": "Engine/Build/BatchFiles/Linux/Build.sh",
+				"args": [
+					"ThePitProject",
+					"LinuxArm64",
+					"Test",
+					"/home/bo/Projects/The pit project/ThePitProject/ThePitProject.uproject",
+					"-waitmutex",
+					"-clean"
+				],
+				"problemMatcher": "$msCompile",
+				"type": "shell",
+				"options": {
+					"cwd": "/home/bo/Documents/Unreal/Linux_Unreal_Engine_5.8.2"
+				}
+			},
+			{
+				"label": "ThePitProject LinuxArm64 Shipping Build",
+				"group": "build",
+				"command": "Engine/Build/BatchFiles/Linux/Build.sh",
+				"args": [
+					"ThePitProject",
+					"LinuxArm64",
+					"Shipping",
+					"/home/bo/Projects/The pit project/ThePitProject/ThePitProject.uproject",
+					"-waitmutex"
+				],
+				"problemMatcher": "$msCompile",
+				"type": "shell",
+				"options": {
+					"cwd": "/home/bo/Documents/Unreal/Linux_Unreal_Engine_5.8.2"
+				}
+			},
+			{
+				"label": "ThePitProject LinuxArm64 Shipping Rebuild",
+				"group": "build",
+				"command": "Engine/Build/BatchFiles/Linux/Build.sh",
+				"args": [
+					"ThePitProject",
+					"LinuxArm64",
+					"Shipping",
+					"/home/bo/Projects/The pit project/ThePitProject/ThePitProject.uproject",
+					"-waitmutex"
+				],
+				"problemMatcher": "$msCompile",
+				"dependsOn": [
+					"ThePitProject LinuxArm64 Shipping Clean"
+				],
+				"type": "shell",
+				"options": {
+					"cwd": "/home/bo/Documents/Unreal/Linux_Unreal_Engine_5.8.2"
+				}
+			},
+			{
+				"label": "ThePitProject LinuxArm64 Shipping Clean",
+				"group": "build",
+				"command": "Engine/Build/BatchFiles/Linux/Build.sh",
+				"args": [
+					"ThePitProject",
+					"LinuxArm64",
+					"Shipping",
+					"/home/bo/Projects/The pit project/ThePitProject/ThePitProject.uproject",
+					"-waitmutex",
+					"-clean"
+				],
+				"problemMatcher": "$msCompile",
+				"type": "shell",
+				"options": {
+					"cwd": "/home/bo/Documents/Unreal/Linux_Unreal_Engine_5.8.2"
+				}
+			},
+			{
+				"label": "ThePitProjectEditor Linux Debug Build",
+				"group": "build",
+				"command": "Engine/Build/BatchFiles/Linux/Build.sh",
+				"args": [
+					"ThePitProjectEditor",
+					"Linux",
+					"Debug",
+					"/home/bo/Projects/The pit project/ThePitProject/ThePitProject.uproject",
+					"-waitmutex"
+				],
+				"problemMatcher": "$msCompile",
+				"type": "shell",
+				"options": {
+					"cwd": "/home/bo/Documents/Unreal/Linux_Unreal_Engine_5.8.2"
+				}
+			},
+			{
+				"label": "ThePitProjectEditor Linux Debug Rebuild",
+				"group": "build",
+				"command": "Engine/Build/BatchFiles/Linux/Build.sh",
+				"args": [
+					"ThePitProjectEditor",
+					"Linux",
+					"Debug",
+					"/home/bo/Projects/The pit project/ThePitProject/ThePitProject.uproject",
+					"-waitmutex"
+				],
+				"problemMatcher": "$msCompile",
+				"dependsOn": [
+					"ThePitProjectEditor Linux Debug Clean"
+				],
+				"type": "shell",
+				"options": {
+					"cwd": "/home/bo/Documents/Unreal/Linux_Unreal_Engine_5.8.2"
+				}
+			},
+			{
+				"label": "ThePitProjectEditor Linux Debug Clean",
+				"group": "build",
+				"command": "Engine/Build/BatchFiles/Linux/Build.sh",
+				"args": [
+					"ThePitProjectEditor",
+					"Linux",
+					"Debug",
+					"/home/bo/Projects/The pit project/ThePitProject/ThePitProject.uproject",
+					"-waitmutex",
+					"-clean"
+				],
+				"problemMatcher": "$msCompile",
+				"type": "shell",
+				"options": {
+					"cwd": "/home/bo/Documents/Unreal/Linux_Unreal_Engine_5.8.2"
+				}
+			},
+			{
+				"label": "ThePitProjectEditor Linux DebugGame Build",
+				"group": "build",
+				"command": "Engine/Build/BatchFiles/Linux/Build.sh",
+				"args": [
+					"ThePitProjectEditor",
+					"Linux",
+					"DebugGame",
+					"/home/bo/Projects/The pit project/ThePitProject/ThePitProject.uproject",
+					"-waitmutex"
+				],
+				"problemMatcher": "$msCompile",
+				"type": "shell",
+				"options": {
+					"cwd": "/home/bo/Documents/Unreal/Linux_Unreal_Engine_5.8.2"
+				}
+			},
+			{
+				"label": "ThePitProjectEditor Linux DebugGame Rebuild",
+				"group": "build",
+				"command": "Engine/Build/BatchFiles/Linux/Build.sh",
+				"args": [
+					"ThePitProjectEditor",
+					"Linux",
+					"DebugGame",
+					"/home/bo/Projects/The pit project/ThePitProject/ThePitProject.uproject",
+					"-waitmutex"
+				],
+				"problemMatcher": "$msCompile",
+				"dependsOn": [
+					"ThePitProjectEditor Linux DebugGame Clean"
+				],
+				"type": "shell",
+				"options": {
+					"cwd": "/home/bo/Documents/Unreal/Linux_Unreal_Engine_5.8.2"
+				}
+			},
+			{
+				"label": "ThePitProjectEditor Linux DebugGame Clean",
+				"group": "build",
+				"command": "Engine/Build/BatchFiles/Linux/Build.sh",
+				"args": [
+					"ThePitProjectEditor",
+					"Linux",
+					"DebugGame",
+					"/home/bo/Projects/The pit project/ThePitProject/ThePitProject.uproject",
+					"-waitmutex",
+					"-clean"
+				],
+				"problemMatcher": "$msCompile",
+				"type": "shell",
+				"options": {
+					"cwd": "/home/bo/Documents/Unreal/Linux_Unreal_Engine_5.8.2"
+				}
+			},
+			{
+				"label": "ThePitProjectEditor Linux Development Build",
+				"group": "build",
+				"command": "Engine/Build/BatchFiles/Linux/Build.sh",
+				"args": [
+					"ThePitProjectEditor",
+					"Linux",
+					"Development",
+					"/home/bo/Projects/The pit project/ThePitProject/ThePitProject.uproject",
+					"-waitmutex"
+				],
+				"problemMatcher": "$msCompile",
+				"type": "shell",
+				"options": {
+					"cwd": "/home/bo/Documents/Unreal/Linux_Unreal_Engine_5.8.2"
+				}
+			},
+			{
+				"label": "ThePitProjectEditor Linux Development Rebuild",
+				"group": "build",
+				"command": "Engine/Build/BatchFiles/Linux/Build.sh",
+				"args": [
+					"ThePitProjectEditor",
+					"Linux",
+					"Development",
+					"/home/bo/Projects/The pit project/ThePitProject/ThePitProject.uproject",
+					"-waitmutex"
+				],
+				"problemMatcher": "$msCompile",
+				"dependsOn": [
+					"ThePitProjectEditor Linux Development Clean"
+				],
+				"type": "shell",
+				"options": {
+					"cwd": "/home/bo/Documents/Unreal/Linux_Unreal_Engine_5.8.2"
+				}
+			},
+			{
+				"label": "ThePitProjectEditor Linux Development Clean",
+				"group": "build",
+				"command": "Engine/Build/BatchFiles/Linux/Build.sh",
+				"args": [
+					"ThePitProjectEditor",
+					"Linux",
+					"Development",
+					"/home/bo/Projects/The pit project/ThePitProject/ThePitProject.uproject",
+					"-waitmutex",
+					"-clean"
+				],
+				"problemMatcher": "$msCompile",
+				"type": "shell",
+				"options": {
+					"cwd": "/home/bo/Documents/Unreal/Linux_Unreal_Engine_5.8.2"
+				}
+			}
+		]
+	},
+	"launch": {
+		"version": "0.2.0",
+		"configurations": [
+			{
+				"name": "Launch ThePitProject (Debug)",
+				"request": "launch",
+				"program": "/home/bo/Projects/The pit project/ThePitProject/Binaries/Linux/UnrealGame-Linux-Debug",
+				"preLaunchTask": "ThePitProject Linux Debug Build",
+				"args": [
+				],
+				"cwd": "/home/bo/Documents/Unreal/Linux_Unreal_Engine_5.8.2",
+				"type": "cppdbg",
+				"visualizerFile": "/home/bo/Documents/Unreal/Linux_Unreal_Engine_5.8.2/Engine/Extras/VisualStudioDebugging/Unreal.natvis",
+				"showDisplayString": true
+			},
+			{
+				"name": "Launch ThePitProject (DebugGame)",
+				"request": "launch",
+				"program": "/home/bo/Projects/The pit project/ThePitProject/Binaries/Linux/UnrealGame-Linux-DebugGame",
+				"preLaunchTask": "ThePitProject Linux DebugGame Build",
+				"args": [
+				],
+				"cwd": "/home/bo/Documents/Unreal/Linux_Unreal_Engine_5.8.2",
+				"type": "cppdbg",
+				"visualizerFile": "/home/bo/Documents/Unreal/Linux_Unreal_Engine_5.8.2/Engine/Extras/VisualStudioDebugging/Unreal.natvis",
+				"showDisplayString": true
+			},
+			{
+				"name": "Launch ThePitProject (Development)",
+				"request": "launch",
+				"program": "/home/bo/Projects/The pit project/ThePitProject/Binaries/Linux/UnrealGame",
+				"preLaunchTask": "ThePitProject Linux Development Build",
+				"args": [
+				],
+				"cwd": "/home/bo/Documents/Unreal/Linux_Unreal_Engine_5.8.2",
+				"type": "cppdbg",
+				"visualizerFile": "/home/bo/Documents/Unreal/Linux_Unreal_Engine_5.8.2/Engine/Extras/VisualStudioDebugging/Unreal.natvis",
+				"showDisplayString": true
+			},
+			{
+				"name": "Launch ThePitProject (Test)",
+				"request": "launch",
+				"program": "/home/bo/Projects/The pit project/ThePitProject/Binaries/Linux/UnrealGame-Linux-Test",
+				"preLaunchTask": "ThePitProject Linux Test Build",
+				"args": [
+				],
+				"cwd": "/home/bo/Documents/Unreal/Linux_Unreal_Engine_5.8.2",
+				"type": "cppdbg",
+				"visualizerFile": "/home/bo/Documents/Unreal/Linux_Unreal_Engine_5.8.2/Engine/Extras/VisualStudioDebugging/Unreal.natvis",
+				"showDisplayString": true
+			},
+			{
+				"name": "Launch ThePitProject (Shipping)",
+				"request": "launch",
+				"program": "/home/bo/Projects/The pit project/ThePitProject/Binaries/Linux/UnrealGame-Linux-Shipping",
+				"preLaunchTask": "ThePitProject Linux Shipping Build",
+				"args": [
+				],
+				"cwd": "/home/bo/Documents/Unreal/Linux_Unreal_Engine_5.8.2",
+				"type": "cppdbg",
+				"visualizerFile": "/home/bo/Documents/Unreal/Linux_Unreal_Engine_5.8.2/Engine/Extras/VisualStudioDebugging/Unreal.natvis",
+				"showDisplayString": true
+			},
+			{
+				"name": "Launch ThePitProjectEditor (Debug)",
+				"request": "launch",
+				"program": "/home/bo/Documents/Unreal/Linux_Unreal_Engine_5.8.2/Engine/Binaries/Linux/UnrealEditor-Linux-Debug",
+				"preLaunchTask": "ThePitProjectEditor Linux Debug Build",
+				"args": [
+					"/home/bo/Projects/The pit project/ThePitProject/ThePitProject.uproject"
+				],
+				"cwd": "/home/bo/Documents/Unreal/Linux_Unreal_Engine_5.8.2",
+				"type": "cppdbg",
+				"visualizerFile": "/home/bo/Documents/Unreal/Linux_Unreal_Engine_5.8.2/Engine/Extras/VisualStudioDebugging/Unreal.natvis",
+				"showDisplayString": true
+			},
+			{
+				"name": "Launch ThePitProjectEditor (DebugGame)",
+				"request": "launch",
+				"program": "/home/bo/Documents/Unreal/Linux_Unreal_Engine_5.8.2/Engine/Binaries/Linux/UnrealEditor-Linux-DebugGame",
+				"preLaunchTask": "ThePitProjectEditor Linux DebugGame Build",
+				"args": [
+					"/home/bo/Projects/The pit project/ThePitProject/ThePitProject.uproject"
+				],
+				"cwd": "/home/bo/Documents/Unreal/Linux_Unreal_Engine_5.8.2",
+				"type": "cppdbg",
+				"visualizerFile": "/home/bo/Documents/Unreal/Linux_Unreal_Engine_5.8.2/Engine/Extras/VisualStudioDebugging/Unreal.natvis",
+				"showDisplayString": true
+			},
+			{
+				"name": "Launch ThePitProjectEditor (Development)",
+				"request": "launch",
+				"program": "/home/bo/Documents/Unreal/Linux_Unreal_Engine_5.8.2/Engine/Binaries/Linux/UnrealEditor",
+				"preLaunchTask": "ThePitProjectEditor Linux Development Build",
+				"args": [
+					"/home/bo/Projects/The pit project/ThePitProject/ThePitProject.uproject"
+				],
+				"cwd": "/home/bo/Documents/Unreal/Linux_Unreal_Engine_5.8.2",
+				"type": "cppdbg",
+				"visualizerFile": "/home/bo/Documents/Unreal/Linux_Unreal_Engine_5.8.2/Engine/Extras/VisualStudioDebugging/Unreal.natvis",
+				"showDisplayString": true
+			},
+			{
+				"name": "Generate Project Files",
+				"type": "coreclr",
+				"request": "launch",
+				"preLaunchTask": "UnrealBuildTool Linux Development Build",
+				"program": "/home/bo/Documents/Unreal/Linux_Unreal_Engine_5.8.2/Engine/Build/BatchFiles/RunUBT.sh",
+				"args": [
+					"-projectfiles",
+					"-vscode",
+					"-project=/home/bo/Projects/The pit project/ThePitProject/ThePitProject.uproject",
+					"-game",
+					"-engine",
+					"-dotnet"
+				],
+				"env": {
+					"PATH": "/home/bo/Documents/Unreal/Linux_Unreal_Engine_5.8.2/Engine/Binaries/ThirdParty/DotNet/10.0/linux-x64:${env:PATH}",
+					"DOTNET_ROOT": "/home/bo/Documents/Unreal/Linux_Unreal_Engine_5.8.2/Engine/Binaries/ThirdParty/DotNet/10.0/linux-x64",
+					"DOTNET_HOST_PATH": "/home/bo/Documents/Unreal/Linux_Unreal_Engine_5.8.2/Engine/Binaries/ThirdParty/DotNet/10.0/linux-x64/dotnet",
+					"DOTNET_MULTILEVEL_LOOKUP": "0",
+					"DOTNET_ROLL_FORWARD": "LatestMajor"
+				},
+				"console": "internalConsole",
+				"internalConsoleOptions": "openOnSessionStart",
+				"stopAtEntry": false,
+				"cwd": "/home/bo/Documents/Unreal/Linux_Unreal_Engine_5.8.2"
+			}
+		]
+	}
+}
