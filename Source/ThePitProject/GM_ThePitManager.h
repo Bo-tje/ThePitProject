@@ -64,6 +64,18 @@ protected:
 	UFUNCTION(BlueprintImplementableEvent, Category = "Pit")
 	void OnGamePhaseChanged(EPitGamePhases NewPhase);
 	
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pit|Spawning")
+	TSubclassOf<AActor> PlayerPawnClass;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pit|Spawning")
+	TSubclassOf<AActor> TrackActorClass;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pit|Spawning")
+	bool bAutoSpawnOnRegister = true;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pit|Spawning")
+	TArray<FTransform> PredefinedSpawnTransforms;
+
 public:
 	UFUNCTION(BlueprintCallable, Category = "Pit")
 	void StartGame();
@@ -71,6 +83,12 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Pit")
 	void AssignActorToPlayer(int32 PlayerIndex, AActor* TargetActor);
     
+	UFUNCTION(BlueprintCallable, Category = "Pit")
+	AActor* SpawnPlayerForIndex(int32 PlayerIndex);
+
 	UFUNCTION(BlueprintPure, Category = "Pit")
 	AActor* GetPlayerActor(int32 PlayerIndex) const;
+
+	UFUNCTION(BlueprintPure, Category = "Pit")
+	bool ResolvePlayerIndexAndSubChannel(FName InFullChannel, int32& OutPlayerIndex, FName& OutSubChannel) const;
 };
