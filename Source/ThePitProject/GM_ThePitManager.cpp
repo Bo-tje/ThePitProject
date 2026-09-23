@@ -181,18 +181,7 @@ void AGM_ThePitManager::HandleButtonPressed(FName Channel)
 	bool bFound = ResolvePlayerIndexAndSubChannel(Channel, PlayerIndex, SubChannel);
 
 	FString SubStr = SubChannel.ToString().ToLower();
-	// Ignore axis channels from being treated as buttons
-	if (SubStr.Contains(TEXT("axis")) || 
-	    SubStr.Contains(TEXT("dial")) || 
-	    SubStr.Contains(TEXT("rotary")) || 
-	    SubStr.Contains(TEXT("wheel")) || 
-	    SubStr.Contains(TEXT("steer")) || 
-	    SubStr == TEXT("x") || 
-	    SubStr == TEXT("y"))
-	{
-		return;
-	}
-
+	
 	if (CurrentGamePhase == EPitGamePhases::Registration)
 	{
 		if (!bFound || PlayerIndex < 0)
@@ -243,18 +232,7 @@ void AGM_ThePitManager::HandleButtonReleased(FName Channel)
 		FName SubChannel = NAME_None;
 		if (ResolvePlayerIndexAndSubChannel(Channel, PlayerIndex, SubChannel) && PlayerIndex >= 0)
 		{
-			FString SubStr = SubChannel.ToString().ToLower();
-			if (SubStr.Contains(TEXT("axis")) || 
-			    SubStr.Contains(TEXT("dial")) || 
-			    SubStr.Contains(TEXT("rotary")) || 
-			    SubStr.Contains(TEXT("wheel")) || 
-			    SubStr.Contains(TEXT("steer")) || 
-			    SubStr == TEXT("x") || 
-			    SubStr == TEXT("y"))
-			{
-				return;
-			}
-
+			
 			OnPlayerButtonReleased(PlayerIndex, SubChannel.IsNone() ? Channel : SubChannel);
 			
 			if (AActor* Actor = GetPlayerActor(PlayerIndex))
@@ -264,6 +242,7 @@ void AGM_ThePitManager::HandleButtonReleased(FName Channel)
 					IPitControllableInterface::Execute_OnActionReleased(Actor, SubChannel.IsNone() ? Channel : SubChannel);
 				}
 			}
+			UE_LOG(LogTemp, Log, TEXT("Player %d released action (subchannel: %s)"), PlayerIndex, *SubChannel.ToString());
 		}
 	}
 }

@@ -98,25 +98,13 @@ void APitShootyPlayer::OnPlayerAssigned_Implementation(int32 PlayerIndex, FName 
 void APitShootyPlayer::OnActionPressed_Implementation(FName Channel)
 {
 	FString ChannelStr = Channel.ToString().ToLower();
-
-	// Ignore axis channels
-	if (ChannelStr.Contains(TEXT("axis")) || 
-	    ChannelStr.Contains(TEXT("dial")) || 
-	    ChannelStr.Contains(TEXT("rotary")) || 
-	    ChannelStr.Contains(TEXT("steer")) ||
-	    ChannelStr.Contains(TEXT("wheel")) ||
-	    ChannelStr == TEXT("x"))
-	{
-		return;
-	}
-
+	
 	if (ChannelStr.Contains(TEXT("shield")) || ChannelStr.Contains(TEXT("defend")))
 	{
 		SetShieldActive(true);
 	}
-	else
+	else if (ChannelStr.Contains(TEXT("fire")) )
 	{
-		// Default or "action", "fire", "button"
 		Fire();
 	}
 }
@@ -134,47 +122,21 @@ void APitShootyPlayer::OnActionReleased_Implementation(FName Channel)
 void APitShootyPlayer::OnAxisInput_Implementation(FName Channel, float Value, float Delta)
 {
 	FString ChannelStr = Channel.ToString().ToLower();
-
-	// Ignore button and action subchannels for movement
-	if (ChannelStr.Contains(TEXT("action")) || 
-	    ChannelStr.Contains(TEXT("button")) || 
-	    ChannelStr.Contains(TEXT("shield")) || 
-	    ChannelStr.Contains(TEXT("defend")) || 
-	    ChannelStr.Contains(TEXT("fire")) ||
-	    ChannelStr.Contains(TEXT("trigger")))
+	
+	
+	if (ChannelStr.Contains(TEXT("axis")) || ChannelStr.Contains(TEXT("x")))
 	{
-		return;
-	}
+		// Horizontal axis movement (axis, dial, x, steer, move, or default)
+		float MoveAmount = (FMath::Abs(Delta) > KINDA_SMALL_NUMBER) ? Delta : Value;
 
-	// If joystick Y axis is sent as "y", "vertical", or "down"
-	if (ChannelStr.Contains(TEXT("y")) || ChannelStr.Contains(TEXT("vert")))
-	{
-		if (Value < -0.4f)
+		if (TargetSplineComponent || TrackActor)
 		{
-			SetShieldActive(true);
-		}
-		else if (Value > 0.4f)
-		{
-			SetShieldActive(false);
-			Fire();
+			MoveAlongSpline(MoveAmount);
 		}
 		else
 		{
-			SetShieldActive(false);
+			MoveAlongRail(MoveAmount);
 		}
-		return;
-	}
-
-	// Horizontal axis movement (axis, dial, x, steer, move, or default)
-	float MoveAmount = (FMath::Abs(Delta) > KINDA_SMALL_NUMBER) ? Delta : Value;
-
-	if (TargetSplineComponent || TrackActor)
-	{
-		MoveAlongSpline(MoveAmount);
-	}
-	else
-	{
-		MoveAlongRail(MoveAmount);
 	}
 }
 
@@ -296,6 +258,6 @@ void APitShootyPlayer::ApplyDamageToPlayer(float DamageAmount)
 
 	if (CurrentHealth <= 0.0f)
 	{
-		UE_LOG(LogTemp, Log, TEXT("APitShootyPlayer %d destroyed!"), AssignedPlayerIndex);
+		UE_LOG(LogTemp, Log, TEXT("APitShootyPlayer %d destroyed!"), AssignedPlayerIndex + 1);
 	}
 }
