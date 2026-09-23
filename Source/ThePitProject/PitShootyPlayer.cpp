@@ -144,14 +144,6 @@ void APitShootyPlayer::MoveAlongSpline(float InputDelta)
 {
 	if (!TargetSplineComponent)
 	{
-		if (TrackActor)
-		{
-			TargetSplineComponent = TrackActor->FindComponentByClass<USplineComponent>();
-		}
-	}
-
-	if (!TargetSplineComponent)
-	{
 		return;
 	}
 

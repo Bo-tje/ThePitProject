@@ -16,7 +16,5 @@ public class ThePitProject : ModuleRules
 			"EnhancedInput",
 			"OSC"
 		});
-
-		PrivateDependencyModuleNames.AddRange(new string[] {  });
 	}
 }

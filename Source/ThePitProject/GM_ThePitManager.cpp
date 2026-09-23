@@ -54,19 +54,13 @@ bool AGM_ThePitManager::ResolvePlayerIndexAndSubChannel(FName InFullChannel, int
 	}
 
 	// Try extracting player number from prefix: "player0", "p1", "0", etc.
-	FString NumStr = TEXT("");
-	for (TCHAR Ch : PlayerPrefix)
+	for (int32 i = 0; i < PlayerPrefix.Len(); ++i)
 	{
-		if (FChar::IsDigit(Ch))
+		if (FChar::IsDigit(PlayerPrefix[i]))
 		{
-			NumStr.AppendChar(Ch);
+			OutPlayerIndex = FCString::Atoi(*PlayerPrefix + i);
+			return true;
 		}
-	}
-
-	if (!NumStr.IsEmpty())
-	{
-		OutPlayerIndex = FCString::Atoi(*NumStr);
-		return true;
 	}
 
 	// Fallback to registered channel map
@@ -205,64 +199,53 @@ void AGM_ThePitManager::HandleButtonPressed(FName Channel)
 		}
 	}
 	
-	if (CurrentGamePhase == EPitGamePhases::Gameplay)
+	if (CurrentGamePhase == EPitGamePhases::Gameplay && bFound && PlayerIndex >= 0)
 	{
-		if (bFound && PlayerIndex >= 0)
+		const FName TargetSub = SubChannel.IsNone() ? Channel : SubChannel;
+		OnPlayerAction(PlayerIndex, TargetSub);
+		if (AActor* Actor = GetPlayerActor(PlayerIndex))
 		{
-			OnPlayerAction(PlayerIndex, SubChannel.IsNone() ? Channel : SubChannel);
-			
-			if (AActor* Actor = GetPlayerActor(PlayerIndex))
+			if (Actor->Implements<UPitControllableInterface>())
 			{
-				if (Actor->Implements<UPitControllableInterface>())
-				{
-					IPitControllableInterface::Execute_OnActionPressed(Actor, SubChannel.IsNone() ? Channel : SubChannel);
-				}
+				IPitControllableInterface::Execute_OnActionPressed(Actor, TargetSub);
 			}
-			
-			UE_LOG(LogTemp, Log, TEXT("Player %d pressed action (subchannel: %s)"), PlayerIndex, *SubChannel.ToString());
 		}
+		UE_LOG(LogTemp, Log, TEXT("Player %d pressed action (subchannel: %s)"), PlayerIndex, *SubChannel.ToString());
 	}
 }
 
 void AGM_ThePitManager::HandleButtonReleased(FName Channel)
 {
-	if (CurrentGamePhase == EPitGamePhases::Gameplay)
+	int32 PlayerIndex = -1;
+	FName SubChannel = NAME_None;
+	if (CurrentGamePhase == EPitGamePhases::Gameplay && ResolvePlayerIndexAndSubChannel(Channel, PlayerIndex, SubChannel) && PlayerIndex >= 0)
 	{
-		int32 PlayerIndex = -1;
-		FName SubChannel = NAME_None;
-		if (ResolvePlayerIndexAndSubChannel(Channel, PlayerIndex, SubChannel) && PlayerIndex >= 0)
+		const FName TargetSub = SubChannel.IsNone() ? Channel : SubChannel;
+		OnPlayerButtonReleased(PlayerIndex, TargetSub);
+		if (AActor* Actor = GetPlayerActor(PlayerIndex))
 		{
-			
-			OnPlayerButtonReleased(PlayerIndex, SubChannel.IsNone() ? Channel : SubChannel);
-			
-			if (AActor* Actor = GetPlayerActor(PlayerIndex))
+			if (Actor->Implements<UPitControllableInterface>())
 			{
-				if (Actor->Implements<UPitControllableInterface>())
-				{
-					IPitControllableInterface::Execute_OnActionReleased(Actor, SubChannel.IsNone() ? Channel : SubChannel);
-				}
+				IPitControllableInterface::Execute_OnActionReleased(Actor, TargetSub);
 			}
-			UE_LOG(LogTemp, Log, TEXT("Player %d released action (subchannel: %s)"), PlayerIndex, *SubChannel.ToString());
 		}
+		UE_LOG(LogTemp, Log, TEXT("Player %d released action (subchannel: %s)"), PlayerIndex, *SubChannel.ToString());
 	}
 }
 
 void AGM_ThePitManager::HandleInputChanged(FName Channel, float Value, float Delta)
 {
-	if (CurrentGamePhase == EPitGamePhases::Gameplay)
+	int32 PlayerIndex = -1;
+	FName SubChannel = NAME_None;
+	if (CurrentGamePhase == EPitGamePhases::Gameplay && ResolvePlayerIndexAndSubChannel(Channel, PlayerIndex, SubChannel) && PlayerIndex >= 0)
 	{
-		int32 PlayerIndex = -1;
-		FName SubChannel = NAME_None;
-		if (ResolvePlayerIndexAndSubChannel(Channel, PlayerIndex, SubChannel) && PlayerIndex >= 0)
+		const FName TargetSub = SubChannel.IsNone() ? Channel : SubChannel;
+		OnPlayerInputChanged(PlayerIndex, TargetSub, Value, Delta);
+		if (AActor* Actor = GetPlayerActor(PlayerIndex))
 		{
-			OnPlayerInputChanged(PlayerIndex, SubChannel.IsNone() ? Channel : SubChannel, Value, Delta);
-			
-			if (AActor* Actor = GetPlayerActor(PlayerIndex))
+			if (Actor->Implements<UPitControllableInterface>())
 			{
-				if (Actor->Implements<UPitControllableInterface>())
-				{
-					IPitControllableInterface::Execute_OnAxisInput(Actor, SubChannel.IsNone() ? Channel : SubChannel, Value, Delta);
-				}
+				IPitControllableInterface::Execute_OnAxisInput(Actor, TargetSub, Value, Delta);
 			}
 		}
 	}
