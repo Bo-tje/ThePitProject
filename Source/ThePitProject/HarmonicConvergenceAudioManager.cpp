@@ -1,4 +1,5 @@
 #include "HarmonicConvergenceAudioManager.h"
+#include "HarmonicConvergenceSynthComponent.h"
 #include "InputManagerSubSystem.h"
 #include "Kismet/GameplayStatics.h"
 
@@ -6,8 +7,14 @@ AHarmonicConvergenceAudioManager::AHarmonicConvergenceAudioManager()
 {
 	PrimaryActorTick.bCanEverTick = true;
 
+	// Pure C++ Procedural Synth Component (Root)
+	ProceduralSynthComponent = CreateDefaultSubobject<UHarmonicConvergenceSynthComponent>(TEXT("ProceduralConvergenceSynth"));
+	SetRootComponent(ProceduralSynthComponent);
+
+	// Optional MetaSound Audio Component (Attached)
 	CentralConvergenceAudioComponent = CreateDefaultSubobject<UAudioComponent>(TEXT("CentralConvergenceAudio"));
-	SetRootComponent(CentralConvergenceAudioComponent);
+	CentralConvergenceAudioComponent->SetupAttachment(RootComponent);
+	CentralConvergenceAudioComponent->bAutoActivate = false;
 }
 
 void AHarmonicConvergenceAudioManager::BeginPlay()
@@ -39,7 +46,12 @@ void AHarmonicConvergenceAudioManager::BeginPlay()
 		}
 	}
 
-	if (CentralConvergenceAudioComponent && !CentralConvergenceAudioComponent->IsPlaying())
+	if (ProceduralSynthComponent && !ProceduralSynthComponent->IsPlaying())
+	{
+		ProceduralSynthComponent->Start();
+	}
+
+	if (CentralConvergenceAudioComponent && CentralConvergenceAudioComponent->GetSound())
 	{
 		CentralConvergenceAudioComponent->Play();
 	}
@@ -82,35 +94,40 @@ void AHarmonicConvergenceAudioManager::SetHarmonicScale(EHarmonicScaleMode NewMo
 
 void AHarmonicConvergenceAudioManager::ApplyHarmonicScaleFrequencies()
 {
-	// Pentatonic Major: C4, D4, E4, G4, A4, C5
-	static const float PentatonicMajorFreqs[] = { 261.63f, 293.66f, 329.63f, 392.00f, 440.00f, 523.25f };
-	// Pentatonic Minor: C4, Eb4, F4, G4, Bb4, C5
-	static const float PentatonicMinorFreqs[] = { 261.63f, 311.13f, 349.23f, 392.00f, 466.16f, 523.25f };
-	// Lydian Celestial: C4, E4, F#4, G4, B4, D5
-	static const float LydianCelestialFreqs[] = { 261.63f, 329.63f, 369.99f, 392.00f, 493.88f, 587.33f };
-	// Hirajoshi Luminous: C4, Db4, F4, G4, Ab4, C5
-	static const float HirajoshiFreqs[] = { 261.63f, 277.18f, 349.23f, 392.00f, 415.30f, 523.25f };
-	// Dorian Ambient: C4, D4, Eb4, F4, G4, A4, Bb4
-	static const float DorianFreqs[] = { 261.63f, 293.66f, 311.13f, 349.23f, 392.00f, 440.00f, 466.16f };
+	// Open Harmonic Voicings across multiple octaves (Zero Clashing / Pure Consonance)
+	// Open Major Celestial (C3, G3, C4, E4, G4, B4, D5, E5) - C Major 9 Open Voicing
+	static const float OpenMajorFreqs[] = { 130.81f, 196.00f, 261.63f, 329.63f, 392.00f, 493.88f, 587.33f, 659.25f };
+
+	// Open Lydian Dream (C3, G3, D4, F#4, B4, E5, G5, B5)
+	static const float OpenLydianFreqs[] = { 130.81f, 196.00f, 293.66f, 369.99f, 493.88f, 659.25f, 783.99f, 987.77f };
+
+	// Open Ambient Minor (C3, G3, Eb4, G4, Bb4, D5, G5, C6) - Cm9 Open Voicing
+	static const float OpenMinorFreqs[] = { 130.81f, 196.00f, 311.13f, 392.00f, 466.16f, 587.33f, 783.99f, 1046.50f };
+
+	// Open Hirajoshi Luminous (C3, G3, C4, Db4, F4, Ab4, C5, F5)
+	static const float OpenHirajoshiFreqs[] = { 130.81f, 196.00f, 261.63f, 277.18f, 349.23f, 415.30f, 523.25f, 698.46f };
+
+	// Open Dorian Horizon (C3, G3, D4, F4, A4, C5, E5, G5)
+	static const float OpenDorianFreqs[] = { 130.81f, 196.00f, 293.66f, 349.23f, 440.00f, 523.25f, 659.25f, 783.99f };
 
 	for (int32 i = 0; i < StationConfigs.Num(); ++i)
 	{
 		switch (ScaleMode)
 		{
 		case EHarmonicScaleMode::PentatonicMajor:
-			StationConfigs[i].BaseFrequencyHz = PentatonicMajorFreqs[i % UE_ARRAY_COUNT(PentatonicMajorFreqs)];
-			break;
-		case EHarmonicScaleMode::PentatonicMinor:
-			StationConfigs[i].BaseFrequencyHz = PentatonicMinorFreqs[i % UE_ARRAY_COUNT(PentatonicMinorFreqs)];
+			StationConfigs[i].BaseFrequencyHz = OpenMajorFreqs[i % UE_ARRAY_COUNT(OpenMajorFreqs)];
 			break;
 		case EHarmonicScaleMode::LydianCelestial:
-			StationConfigs[i].BaseFrequencyHz = LydianCelestialFreqs[i % UE_ARRAY_COUNT(LydianCelestialFreqs)];
+			StationConfigs[i].BaseFrequencyHz = OpenLydianFreqs[i % UE_ARRAY_COUNT(OpenLydianFreqs)];
+			break;
+		case EHarmonicScaleMode::PentatonicMinor:
+			StationConfigs[i].BaseFrequencyHz = OpenMinorFreqs[i % UE_ARRAY_COUNT(OpenMinorFreqs)];
 			break;
 		case EHarmonicScaleMode::HirajoshiLuminous:
-			StationConfigs[i].BaseFrequencyHz = HirajoshiFreqs[i % UE_ARRAY_COUNT(HirajoshiFreqs)];
+			StationConfigs[i].BaseFrequencyHz = OpenHirajoshiFreqs[i % UE_ARRAY_COUNT(OpenHirajoshiFreqs)];
 			break;
 		case EHarmonicScaleMode::DorianAmbient:
-			StationConfigs[i].BaseFrequencyHz = DorianFreqs[i % UE_ARRAY_COUNT(DorianFreqs)];
+			StationConfigs[i].BaseFrequencyHz = OpenDorianFreqs[i % UE_ARRAY_COUNT(OpenDorianFreqs)];
 			break;
 		case EHarmonicScaleMode::CustomFrequencies:
 		default:
@@ -146,14 +163,32 @@ void AHarmonicConvergenceAudioManager::TriggerStationNoteOn(FName Channel)
 {
 	IdleTimer = 0.0f; // Reset idle attract timer
 
+	int32 VoiceIndex = INDEX_NONE;
+	float VoicePan = 0.0f;
+	for (int32 i = 0; i < StationConfigs.Num(); ++i)
+	{
+		if (StationConfigs[i].ChannelName == Channel)
+		{
+			VoiceIndex = i;
+			VoicePan = StationConfigs[i].PanPosition;
+			break;
+		}
+	}
+
 	if (FVoiceRuntimeState* State = VoiceStates.Find(Channel))
 	{
 		State->bIsPressed = true;
 		State->CurrentHoldDuration = 0.0f;
 		State->CurrentPressure = 1.0f;
 
-		// Trigger attack parameter on the central MetaSound
-		if (CentralConvergenceAudioComponent)
+		// 1. Direct Pure C++ Procedural Synth Trigger
+		if (ProceduralSynthComponent && VoiceIndex != INDEX_NONE)
+		{
+			ProceduralSynthComponent->NoteOn(VoiceIndex, State->CurrentFrequency, VoicePan);
+		}
+
+		// 2. Optional MetaSound Trigger
+		if (CentralConvergenceAudioComponent && CentralConvergenceAudioComponent->IsPlaying())
 		{
 			FString TriggerName = FString::Printf(TEXT("Trigger_%s_On"), *Channel.ToString());
 			CentralConvergenceAudioComponent->SetTriggerParameter(FName(*TriggerName));
@@ -165,6 +200,16 @@ void AHarmonicConvergenceAudioManager::TriggerStationNoteOff(FName Channel)
 {
 	IdleTimer = 0.0f;
 
+	int32 VoiceIndex = INDEX_NONE;
+	for (int32 i = 0; i < StationConfigs.Num(); ++i)
+	{
+		if (StationConfigs[i].ChannelName == Channel)
+		{
+			VoiceIndex = i;
+			break;
+		}
+	}
+
 	if (FVoiceRuntimeState* State = VoiceStates.Find(Channel))
 	{
 		if (State->bIsPressed)
@@ -172,7 +217,12 @@ void AHarmonicConvergenceAudioManager::TriggerStationNoteOff(FName Channel)
 			if (State->CurrentHoldDuration >= ShockwaveThresholdHoldTime)
 			{
 				OnShockwaveReleased.Broadcast(Channel, State->CurrentHoldDuration);
-				if (CentralConvergenceAudioComponent)
+				
+				if (ProceduralSynthComponent)
+				{
+					ProceduralSynthComponent->TriggerShockwave();
+				}
+				if (CentralConvergenceAudioComponent && CentralConvergenceAudioComponent->IsPlaying())
 				{
 					CentralConvergenceAudioComponent->SetTriggerParameter(TEXT("Trigger_Shockwave"));
 				}
@@ -182,7 +232,14 @@ void AHarmonicConvergenceAudioManager::TriggerStationNoteOff(FName Channel)
 			State->ModulationIntensity = 0.0f;
 			State->CurrentPressure = 0.0f;
 
-			if (CentralConvergenceAudioComponent)
+			// 1. Direct Pure C++ Procedural Synth Trigger
+			if (ProceduralSynthComponent && VoiceIndex != INDEX_NONE)
+			{
+				ProceduralSynthComponent->NoteOff(VoiceIndex);
+			}
+
+			// 2. Optional MetaSound Trigger
+			if (CentralConvergenceAudioComponent && CentralConvergenceAudioComponent->IsPlaying())
 			{
 				FString TriggerName = FString::Printf(TEXT("Trigger_%s_Off"), *Channel.ToString());
 				CentralConvergenceAudioComponent->SetTriggerParameter(FName(*TriggerName));
@@ -214,18 +271,26 @@ void AHarmonicConvergenceAudioManager::UpdateConvergenceParameters(float DeltaTi
 	ActiveVoiceCount = 0;
 	float TotalModulation = 0.0f;
 
-	for (auto& Pair : VoiceStates)
+	for (int32 i = 0; i < StationConfigs.Num(); ++i)
 	{
-		FVoiceRuntimeState& State = Pair.Value;
-		if (State.bIsPressed)
+		const FName Channel = StationConfigs[i].ChannelName;
+		if (FVoiceRuntimeState* State = VoiceStates.Find(Channel))
 		{
-			ActiveVoiceCount++;
-			State.CurrentHoldDuration += DeltaTime;
-			
-			// Dynamic modulation builds over 4 seconds, scaled by pressure
-			const float BaseMod = FMath::Clamp(State.CurrentHoldDuration / 4.0f, 0.0f, 1.0f);
-			State.ModulationIntensity = FMath::Max(BaseMod, State.CurrentPressure * 0.5f);
-			TotalModulation += State.ModulationIntensity;
+			if (State->bIsPressed)
+			{
+				ActiveVoiceCount++;
+				State->CurrentHoldDuration += DeltaTime;
+
+				// Dynamic modulation builds over 4 seconds, scaled by pressure
+				const float BaseMod = FMath::Clamp(State->CurrentHoldDuration / 4.0f, 0.0f, 1.0f);
+				State->ModulationIntensity = FMath::Max(BaseMod, State->CurrentPressure * 0.5f);
+				TotalModulation += State->ModulationIntensity;
+
+				if (ProceduralSynthComponent)
+				{
+					ProceduralSynthComponent->SetVoiceModulation(i, State->ModulationIntensity);
+				}
+			}
 		}
 	}
 
@@ -238,6 +303,11 @@ void AHarmonicConvergenceAudioManager::UpdateConvergenceParameters(float DeltaTi
 	// Responsive smooth interpolation
 	ConvergenceEnergy = FMath::FInterpTo(ConvergenceEnergy, TargetEnergy, DeltaTime, 5.0f);
 
+	if (ProceduralSynthComponent)
+	{
+		ProceduralSynthComponent->SetConvergenceEnergy(ConvergenceEnergy);
+	}
+
 	// Harmonic Crescendo detection (when all stations held > CrescendoRequiredHoldTime)
 	if (ActiveVoiceCount == StationConfigs.Num() && StationConfigs.Num() > 1)
 	{
@@ -246,7 +316,7 @@ void AHarmonicConvergenceAudioManager::UpdateConvergenceParameters(float DeltaTi
 		{
 			bCrescendoActive = true;
 			OnHarmonicCrescendo.Broadcast(ConvergenceEnergy);
-			if (CentralConvergenceAudioComponent)
+			if (CentralConvergenceAudioComponent && CentralConvergenceAudioComponent->IsPlaying())
 			{
 				CentralConvergenceAudioComponent->SetTriggerParameter(TEXT("Trigger_Crescendo"));
 			}
@@ -272,12 +342,21 @@ void AHarmonicConvergenceAudioManager::UpdateAttractMode(float DeltaTime)
 			if (ChimeTimer >= AttractChimeInterval)
 			{
 				ChimeTimer = 0.0f;
-				if (CentralConvergenceAudioComponent && StationConfigs.Num() > 0)
+				if (StationConfigs.Num() > 0)
 				{
-					// Pick random note from scale for ambient invitation ping
 					const int32 RandomIndex = FMath::RandRange(0, StationConfigs.Num() - 1);
-					CentralConvergenceAudioComponent->SetFloatParameter(TEXT("AttractFrequency"), StationConfigs[RandomIndex].BaseFrequencyHz);
-					CentralConvergenceAudioComponent->SetTriggerParameter(TEXT("Trigger_AttractPing"));
+					const float ChimeFreq = StationConfigs[RandomIndex].BaseFrequencyHz;
+
+					if (ProceduralSynthComponent)
+					{
+						ProceduralSynthComponent->TriggerAttractPing(ChimeFreq);
+					}
+
+					if (CentralConvergenceAudioComponent && CentralConvergenceAudioComponent->IsPlaying())
+					{
+						CentralConvergenceAudioComponent->SetFloatParameter(TEXT("AttractFrequency"), ChimeFreq);
+						CentralConvergenceAudioComponent->SetTriggerParameter(TEXT("Trigger_AttractPing"));
+					}
 				}
 			}
 		}
@@ -291,7 +370,7 @@ void AHarmonicConvergenceAudioManager::UpdateAttractMode(float DeltaTime)
 
 void AHarmonicConvergenceAudioManager::PushMetaSoundParameters()
 {
-	if (!CentralConvergenceAudioComponent)
+	if (!CentralConvergenceAudioComponent || !CentralConvergenceAudioComponent->IsPlaying())
 	{
 		return;
 	}

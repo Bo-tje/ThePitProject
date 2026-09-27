@@ -82,7 +82,10 @@ bool UInputManagerSubSystem::StartOSCClient(const FString& InIPAddress, int32 In
 	OSCClient = UOSCManager::CreateOSCClient(TargetClientIP, TargetClientPort, TEXT("PitOutputClient"), this);
 	if (OSCClient)
 	{
-		OSCClient->Connect();
+		if (!OSCClient->IsActive())
+		{
+			OSCClient->Connect();
+		}
 		return true;
 	}
 	return false;

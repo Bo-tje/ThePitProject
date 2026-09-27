@@ -7,6 +7,7 @@
 #include "HarmonicConvergenceAudioManager.generated.h"
 
 class UInputManagerSubSystem;
+class UHarmonicConvergenceSynthComponent;
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnHarmonicCrescendoTriggered, float, Intensity);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnShockwaveReleased, FName, Channel, float, HoldDuration);
@@ -29,6 +30,11 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Harmonics|Setup")
 	TArray<FStationVoiceConfig> StationConfigs;
 
+	// Pure C++ Procedural Synth Component (Zero MetaSound Nodes Required)
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Harmonics|Audio")
+	TObjectPtr<UHarmonicConvergenceSynthComponent> ProceduralSynthComponent;
+
+	// Optional MetaSound Audio Component (for hybrid/fallback usage)
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Harmonics|Audio")
 	TObjectPtr<UAudioComponent> CentralConvergenceAudioComponent;
 

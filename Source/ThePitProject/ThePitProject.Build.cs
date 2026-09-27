@@ -16,7 +16,9 @@ public class ThePitProject : ModuleRules
 			"EnhancedInput",
 			"OSC",
 			"MetasoundEngine",
-			"AudioExtensions"
+			"AudioExtensions",
+			"AudioMixer",
+			"Synthesis"
 		});
 	}
 }
