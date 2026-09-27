@@ -2,6 +2,7 @@
 
 #include "CoreMinimal.h"
 #include "Components/SynthComponent.h"
+#include "HarmonicConvergenceTypes.h"
 #include "HarmonicConvergenceSynthComponent.generated.h"
 
 // Unconditionally Stable 2-Pole State-Variable Low-Pass Filter (Bilinear / Trapezoidal SVF)
@@ -44,7 +45,7 @@ struct FConvergenceResonantFilter
 	}
 };
 
-// Lightweight Stereo Diffusion Reverb Tank for cinematic ambient blending
+// 4-Tap Stereo Diffusion Reverb Tank for cinematic ambient blending
 struct FAmbientDiffusionTank
 {
 	static constexpr int32 DelaySize1 = 1447;
@@ -65,24 +66,23 @@ struct FAmbientDiffusionTank
 		const float Fb = FMath::Clamp(Feedback, 0.0f, 0.88f);
 		const float Input = (InLeft + InRight) * 0.35f;
 
-		// Comb filters with low-pass damping
 		const float Out1 = Buf1[Idx1];
-		Damp1 = Damp1 * 0.4f + Out1 * 0.6f;
+		Damp1 = Damp1 * 0.45f + Out1 * 0.55f;
 		Buf1[Idx1] = Input + Damp1 * Fb;
 		if (++Idx1 >= DelaySize1) Idx1 = 0;
 
 		const float Out2 = Buf2[Idx2];
-		Damp2 = Damp2 * 0.4f + Out2 * 0.6f;
+		Damp2 = Damp2 * 0.45f + Out2 * 0.55f;
 		Buf2[Idx2] = Input + Damp2 * Fb;
 		if (++Idx2 >= DelaySize2) Idx2 = 0;
 
 		const float Out3 = Buf3[Idx3];
-		Damp3 = Damp3 * 0.4f + Out3 * 0.6f;
+		Damp3 = Damp3 * 0.45f + Out3 * 0.55f;
 		Buf3[Idx3] = Input + Damp3 * Fb;
 		if (++Idx3 >= DelaySize3) Idx3 = 0;
 
 		const float Out4 = Buf4[Idx4];
-		Damp4 = Damp4 * 0.4f + Out4 * 0.6f;
+		Damp4 = Damp4 * 0.45f + Out4 * 0.55f;
 		Buf4[Idx4] = Input + Damp4 * Fb;
 		if (++Idx4 >= DelaySize4) Idx4 = 0;
 
@@ -101,7 +101,7 @@ struct FAmbientDiffusionTank
 	}
 };
 
-// Lush Dual-Oscillator Voice with detune and warm anti-phase stereo
+// Multi-Tier Polyphonic Voice Engine
 struct FConvergenceVoiceDSP
 {
 	float Frequency = 261.63f;
@@ -110,13 +110,18 @@ struct FConvergenceVoiceDSP
 	float LfoPhase = 0.0f;
 	float Modulation = 0.0f;
 	float Pan = 0.0f; // -1.0 Left to +1.0 Right
+	EVoiceTimbreProfile Profile = EVoiceTimbreProfile::WarmPad;
 
 	// Envelope states
 	bool bActive = false;
 	float EnvValue = 0.0f;
 
 	float GenerateSample(float SampleRate, float& OutLeft, float& OutRight);
-	void NoteOn() { bActive = true; }
+	void NoteOn(EVoiceTimbreProfile InProfile)
+	{
+		Profile = InProfile;
+		bActive = true;
+	}
 	void NoteOff() { bActive = false; }
 };
 
@@ -128,9 +133,9 @@ class THEPITPROJECT_API UHarmonicConvergenceSynthComponent : public USynthCompon
 public:
 	UHarmonicConvergenceSynthComponent(const FObjectInitializer& ObjectInitializer);
 
-	// --- Note Triggers (Callable from C++ or Blueprints) ---
+	// --- Note Triggers ---
 	UFUNCTION(BlueprintCallable, Category = "Harmonics|Synth")
-	void NoteOn(int32 VoiceIndex, float FrequencyHz, float Pan = 0.0f);
+	void NoteOn(int32 VoiceIndex, float FrequencyHz, float Pan = 0.0f, EVoiceTimbreProfile Profile = EVoiceTimbreProfile::WarmPad);
 
 	UFUNCTION(BlueprintCallable, Category = "Harmonics|Synth")
 	void NoteOff(int32 VoiceIndex);
@@ -152,7 +157,7 @@ protected:
 	virtual int32 OnGenerateAudio(float* OutAudio, int32 NumSamples) override;
 
 private:
-	static constexpr int32 MaxVoices = 8;
+	static constexpr int32 MaxVoices = 24; // Full 20-station support + headroom
 	FConvergenceVoiceDSP Voices[MaxVoices];
 
 	// Central Sub-Bass Drone (65.4 Hz C2)

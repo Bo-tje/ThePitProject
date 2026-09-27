@@ -14,6 +14,15 @@ enum class EHarmonicScaleMode : uint8
 	CustomFrequencies UMETA(DisplayName = "Custom Frequencies")
 };
 
+UENUM(BlueprintType)
+enum class EVoiceTimbreProfile : uint8
+{
+	WarmPad UMETA(DisplayName = "Warm Analog Pad (Dual-Detuned Sustained)"),
+	SubBassPad UMETA(DisplayName = "Deep Sub-Bass Anchor"),
+	CrystallineChime UMETA(DisplayName = "Crystalline Chime / Glass Marimba Pluck"),
+	VortexSweep UMETA(DisplayName = "Resonant Vortex Drone")
+};
+
 USTRUCT(BlueprintType)
 struct FStationVoiceConfig
 {
@@ -24,6 +33,9 @@ struct FStationVoiceConfig
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Voice")
 	float BaseFrequencyHz = 261.63f; // Default C4
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Voice")
+	EVoiceTimbreProfile TimbreProfile = EVoiceTimbreProfile::WarmPad;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Voice")
 	FLinearColor StreamColor = FLinearColor(0.0f, 0.9f, 1.0f, 1.0f);

@@ -59,21 +59,49 @@ void AHarmonicConvergenceAudioManager::BeginPlay()
 
 void AHarmonicConvergenceAudioManager::InitializeDefaultStations()
 {
-	const FName Channels[] = { TEXT("player1"), TEXT("player2"), TEXT("player3"), TEXT("player4") };
-	const FLinearColor Colors[] = {
-		FLinearColor(0.f, 0.9f, 1.f),    // Cyan
-		FLinearColor(1.f, 0.6f, 0.f),    // Amber
-		FLinearColor(1.f, 0.f, 0.8f),    // Magenta
-		FLinearColor(0.1f, 1.f, 0.4f)    // Emerald
+	// 20-Station Tiered Sound Design for Enschede Lights Up
+	struct FStationInitData
+	{
+		const TCHAR* Name;
+		EVoiceTimbreProfile Timbre;
+		FLinearColor Color;
 	};
-	const float Pans[] = { -0.75f, -0.25f, 0.25f, 0.75f };
 
-	for (int32 i = 0; i < 4; ++i)
+	const FStationInitData StationTable[20] = {
+		{ TEXT("player1"),  EVoiceTimbreProfile::SubBassPad,        FLinearColor(0.0f, 0.9f, 1.0f) }, // Cyan (C2 Sub)
+		{ TEXT("player2"),  EVoiceTimbreProfile::WarmPad,           FLinearColor(1.0f, 0.5f, 0.0f) }, // Amber (G3)
+		{ TEXT("player3"),  EVoiceTimbreProfile::WarmPad,           FLinearColor(1.0f, 0.0f, 0.8f) }, // Magenta (D4)
+		{ TEXT("player4"),  EVoiceTimbreProfile::CrystallineChime,  FLinearColor(0.1f, 1.0f, 0.4f) }, // Emerald (G5 Chime)
+		{ TEXT("player5"),  EVoiceTimbreProfile::SubBassPad,        FLinearColor(0.0f, 0.6f, 1.0f) }, // Azure (C3)
+		{ TEXT("player6"),  EVoiceTimbreProfile::WarmPad,           FLinearColor(1.0f, 0.8f, 0.0f) }, // Gold (E4)
+		{ TEXT("player7"),  EVoiceTimbreProfile::CrystallineChime,  FLinearColor(0.7f, 0.2f, 1.0f) }, // Violet (B5 Chime)
+		{ TEXT("player8"),  EVoiceTimbreProfile::WarmPad,           FLinearColor(0.2f, 0.9f, 0.8f) }, // Turquoise (G4)
+		{ TEXT("player9"),  EVoiceTimbreProfile::CrystallineChime,  FLinearColor(1.0f, 0.4f, 0.6f) }, // Rose (D6 Chime)
+		{ TEXT("player10"), EVoiceTimbreProfile::SubBassPad,        FLinearColor(0.3f, 0.0f, 0.9f) }, // Deep Indigo (G2 Sub)
+		{ TEXT("player11"), EVoiceTimbreProfile::WarmPad,           FLinearColor(0.9f, 0.9f, 0.2f) }, // Sunbeam (A4)
+		{ TEXT("player12"), EVoiceTimbreProfile::CrystallineChime,  FLinearColor(0.2f, 1.0f, 0.7f) }, // Mint (E6 Chime)
+		{ TEXT("player13"), EVoiceTimbreProfile::WarmPad,           FLinearColor(1.0f, 0.2f, 0.2f) }, // Crimson (C5)
+		{ TEXT("player14"), EVoiceTimbreProfile::WarmPad,           FLinearColor(1.0f, 0.6f, 0.3f) }, // Coral (D5)
+		{ TEXT("player15"), EVoiceTimbreProfile::CrystallineChime,  FLinearColor(0.5f, 0.9f, 1.0f) }, // Ice Blue (G6 Chime)
+		{ TEXT("player16"), EVoiceTimbreProfile::SubBassPad,        FLinearColor(0.8f, 0.5f, 0.0f) }, // Bronze (G3 Bass)
+		{ TEXT("player17"), EVoiceTimbreProfile::WarmPad,           FLinearColor(0.9f, 0.1f, 0.6f) }, // Orchid (E5)
+		{ TEXT("player18"), EVoiceTimbreProfile::CrystallineChime,  FLinearColor(1.0f, 1.0f, 1.0f) }, // Starlight White (C7 Chime)
+		{ TEXT("player19"), EVoiceTimbreProfile::WarmPad,           FLinearColor(0.1f, 0.7f, 1.0f) }, // Sky Blue (C4)
+		{ TEXT("player20"), EVoiceTimbreProfile::VortexSweep,       FLinearColor(0.8f, 0.0f, 1.0f) }  // Celestial Purple (Vortex)
+	};
+
+	StationConfigs.Empty();
+	for (int32 i = 0; i < 20; ++i)
 	{
 		FStationVoiceConfig Config;
-		Config.ChannelName = Channels[i];
-		Config.StreamColor = Colors[i];
-		Config.PanPosition = Pans[i];
+		Config.ChannelName = FName(StationTable[i].Name);
+		Config.TimbreProfile = StationTable[i].Timbre;
+		Config.StreamColor = StationTable[i].Color;
+		
+		// 360-degree perimeter circular panning around the pit railing
+		const float Angle = (i / 20.0f) * 2.0f * PI;
+		Config.PanPosition = FMath::Sin(Angle); // Smooth circular stereo pan
+
 		StationConfigs.Add(Config);
 	}
 }
@@ -94,40 +122,55 @@ void AHarmonicConvergenceAudioManager::SetHarmonicScale(EHarmonicScaleMode NewMo
 
 void AHarmonicConvergenceAudioManager::ApplyHarmonicScaleFrequencies()
 {
-	// Open Harmonic Voicings across multiple octaves (Zero Clashing / Pure Consonance)
-	// Open Major Celestial (C3, G3, C4, E4, G4, B4, D5, E5) - C Major 9 Open Voicing
-	static const float OpenMajorFreqs[] = { 130.81f, 196.00f, 261.63f, 329.63f, 392.00f, 493.88f, 587.33f, 659.25f };
+	// 20-Note Open Harmonic Voicings across 5 octaves (Zero Clashing / Pure Consonance)
+	// Open Major Celestial (C2, G3, D4, G5, C3, E4, B5, G4, D6, G2, A4, E6, C5, D5, G6, G3, E5, C7, C4, G4)
+	static const float OpenMajorFreqs[20] = {
+		65.41f, 196.00f, 293.66f, 783.99f, 130.81f, 329.63f, 987.77f, 392.00f, 1174.66f, 97.99f,
+		440.00f, 1318.51f, 523.25f, 587.33f, 1567.98f, 196.00f, 659.25f, 2093.00f, 261.63f, 392.00f
+	};
 
-	// Open Lydian Dream (C3, G3, D4, F#4, B4, E5, G5, B5)
-	static const float OpenLydianFreqs[] = { 130.81f, 196.00f, 293.66f, 369.99f, 493.88f, 659.25f, 783.99f, 987.77f };
+	// Open Lydian Dream
+	static const float OpenLydianFreqs[20] = {
+		65.41f, 196.00f, 293.66f, 783.99f, 130.81f, 369.99f, 987.77f, 392.00f, 1174.66f, 97.99f,
+		493.88f, 1318.51f, 587.33f, 739.99f, 1567.98f, 196.00f, 659.25f, 2093.00f, 261.63f, 369.99f
+	};
 
-	// Open Ambient Minor (C3, G3, Eb4, G4, Bb4, D5, G5, C6) - Cm9 Open Voicing
-	static const float OpenMinorFreqs[] = { 130.81f, 196.00f, 311.13f, 392.00f, 466.16f, 587.33f, 783.99f, 1046.50f };
+	// Open Ambient Minor (Cm9 / Luminous Night)
+	static const float OpenMinorFreqs[20] = {
+		65.41f, 196.00f, 311.13f, 783.99f, 130.81f, 349.23f, 932.33f, 392.00f, 1174.66f, 97.99f,
+		466.16f, 1244.51f, 523.25f, 587.33f, 1567.98f, 196.00f, 622.25f, 2093.00f, 261.63f, 392.00f
+	};
 
-	// Open Hirajoshi Luminous (C3, G3, C4, Db4, F4, Ab4, C5, F5)
-	static const float OpenHirajoshiFreqs[] = { 130.81f, 196.00f, 261.63f, 277.18f, 349.23f, 415.30f, 523.25f, 698.46f };
+	// Open Hirajoshi Luminous
+	static const float OpenHirajoshiFreqs[20] = {
+		65.41f, 196.00f, 277.18f, 783.99f, 130.81f, 349.23f, 830.61f, 392.00f, 1046.50f, 97.99f,
+		415.30f, 1108.73f, 523.25f, 554.37f, 1567.98f, 196.00f, 698.46f, 2093.00f, 261.63f, 349.23f
+	};
 
-	// Open Dorian Horizon (C3, G3, D4, F4, A4, C5, E5, G5)
-	static const float OpenDorianFreqs[] = { 130.81f, 196.00f, 293.66f, 349.23f, 440.00f, 523.25f, 659.25f, 783.99f };
+	// Open Dorian Horizon
+	static const float OpenDorianFreqs[20] = {
+		65.41f, 196.00f, 293.66f, 783.99f, 130.81f, 349.23f, 880.00f, 392.00f, 1174.66f, 97.99f,
+		440.00f, 1318.51f, 523.25f, 587.33f, 1567.98f, 196.00f, 659.25f, 2093.00f, 261.63f, 440.00f
+	};
 
 	for (int32 i = 0; i < StationConfigs.Num(); ++i)
 	{
 		switch (ScaleMode)
 		{
 		case EHarmonicScaleMode::PentatonicMajor:
-			StationConfigs[i].BaseFrequencyHz = OpenMajorFreqs[i % UE_ARRAY_COUNT(OpenMajorFreqs)];
+			StationConfigs[i].BaseFrequencyHz = OpenMajorFreqs[i % 20];
 			break;
 		case EHarmonicScaleMode::LydianCelestial:
-			StationConfigs[i].BaseFrequencyHz = OpenLydianFreqs[i % UE_ARRAY_COUNT(OpenLydianFreqs)];
+			StationConfigs[i].BaseFrequencyHz = OpenLydianFreqs[i % 20];
 			break;
 		case EHarmonicScaleMode::PentatonicMinor:
-			StationConfigs[i].BaseFrequencyHz = OpenMinorFreqs[i % UE_ARRAY_COUNT(OpenMinorFreqs)];
+			StationConfigs[i].BaseFrequencyHz = OpenMinorFreqs[i % 20];
 			break;
 		case EHarmonicScaleMode::HirajoshiLuminous:
-			StationConfigs[i].BaseFrequencyHz = OpenHirajoshiFreqs[i % UE_ARRAY_COUNT(OpenHirajoshiFreqs)];
+			StationConfigs[i].BaseFrequencyHz = OpenHirajoshiFreqs[i % 20];
 			break;
 		case EHarmonicScaleMode::DorianAmbient:
-			StationConfigs[i].BaseFrequencyHz = OpenDorianFreqs[i % UE_ARRAY_COUNT(OpenDorianFreqs)];
+			StationConfigs[i].BaseFrequencyHz = OpenDorianFreqs[i % 20];
 			break;
 		case EHarmonicScaleMode::CustomFrequencies:
 		default:
@@ -165,12 +208,15 @@ void AHarmonicConvergenceAudioManager::TriggerStationNoteOn(FName Channel)
 
 	int32 VoiceIndex = INDEX_NONE;
 	float VoicePan = 0.0f;
+	EVoiceTimbreProfile Timbre = EVoiceTimbreProfile::WarmPad;
+
 	for (int32 i = 0; i < StationConfigs.Num(); ++i)
 	{
 		if (StationConfigs[i].ChannelName == Channel)
 		{
 			VoiceIndex = i;
 			VoicePan = StationConfigs[i].PanPosition;
+			Timbre = StationConfigs[i].TimbreProfile;
 			break;
 		}
 	}
@@ -181,10 +227,10 @@ void AHarmonicConvergenceAudioManager::TriggerStationNoteOn(FName Channel)
 		State->CurrentHoldDuration = 0.0f;
 		State->CurrentPressure = 1.0f;
 
-		// 1. Direct Pure C++ Procedural Synth Trigger
+		// 1. Direct Pure C++ Procedural Synth Trigger with Timbre Profile
 		if (ProceduralSynthComponent && VoiceIndex != INDEX_NONE)
 		{
-			ProceduralSynthComponent->NoteOn(VoiceIndex, State->CurrentFrequency, VoicePan);
+			ProceduralSynthComponent->NoteOn(VoiceIndex, State->CurrentFrequency, VoicePan, Timbre);
 		}
 
 		// 2. Optional MetaSound Trigger
