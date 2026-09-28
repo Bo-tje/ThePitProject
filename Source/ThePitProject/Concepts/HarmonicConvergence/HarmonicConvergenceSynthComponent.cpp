@@ -122,6 +122,17 @@ float FConvergenceVoiceDSP::GenerateSample(float SampleRate, float& OutLeft, flo
 		break;
 	}
 
+	// Instant Tactile Strike Transient (Fast 12ms attack bite on Note-On)
+	if (TransientEnv > 0.001f)
+	{
+		TransientEnv = FMath::FInterpTo(TransientEnv, 0.0f, InvSampleRate, 50.0f); // Fast ~12ms decay
+		TransientPhase += (Frequency * 2.5f * 2.0f * PI) * InvSampleRate;
+		if (TransientPhase > 2.0f * PI) TransientPhase -= 2.0f * PI;
+
+		const float ClickPluck = FMath::Sin(TransientPhase) * TransientEnv * 0.35f;
+		MonoVoice += ClickPluck;
+	}
+
 	// Equal-power stereo spatial panning
 	const float PanAngle = (Pan + 1.0f) * 0.25f * PI;
 	OutLeft = MonoVoice * FMath::Cos(PanAngle);
@@ -287,9 +298,21 @@ int32 UHarmonicConvergenceSynthComponent::OnGenerateAudio(float* OutAudio, int32
 		const float FilteredLeft = LeftFilter.Process(MixedLeft, Cutoff, Q, CurrentSampleRate);
 		const float FilteredRight = RightFilter.Process(MixedRight, Cutoff, Q, CurrentSampleRate);
 
-		// Soft-clipping saturation limiter (Tanh)
-		OutAudio[Frame * 2] = FMath::Tanh(FilteredLeft);
-		OutAudio[Frame * 2 + 1] = FMath::Tanh(FilteredRight);
+		// Output handling: Mono Downmix vs. Spatial Stereo
+		if (bMonoMode)
+		{
+			// Equal-power sum to guarantee 100% loudness and zero phase-drop on a single physical speaker
+			const float MonoDownmix = (FilteredLeft + FilteredRight) * 0.7071f;
+			const float Saturated = FMath::Tanh(MonoDownmix);
+			OutAudio[Frame * 2] = Saturated;
+			OutAudio[Frame * 2 + 1] = Saturated;
+		}
+		else
+		{
+			// Spatial Stereo for multi-speaker setups
+			OutAudio[Frame * 2] = FMath::Tanh(FilteredLeft);
+			OutAudio[Frame * 2 + 1] = FMath::Tanh(FilteredRight);
+		}
 	}
 
 	return NumSamples;

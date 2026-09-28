@@ -116,11 +116,17 @@ struct FConvergenceVoiceDSP
 	bool bActive = false;
 	float EnvValue = 0.0f;
 
+	// Tactile Note-On Strike Transient (Fast 12ms attack bite)
+	float TransientEnv = 0.0f;
+	float TransientPhase = 0.0f;
+
 	float GenerateSample(float SampleRate, float& OutLeft, float& OutRight);
 	void NoteOn(EVoiceTimbreProfile InProfile)
 	{
 		Profile = InProfile;
 		bActive = true;
+		TransientEnv = 1.0f; // Fire instant attack transient on every button press
+		TransientPhase = 0.0f;
 	}
 	void NoteOff() { bActive = false; }
 };
@@ -132,6 +138,10 @@ class THEPITPROJECT_API UHarmonicConvergenceSynthComponent : public USynthCompon
 
 public:
 	UHarmonicConvergenceSynthComponent(const FObjectInitializer& ObjectInitializer);
+
+	// When true, sums audio into an equal-power mono downmix (ideal for single-speaker setups)
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Harmonics|Audio")
+	bool bMonoMode = true;
 
 	// --- Note Triggers ---
 	UFUNCTION(BlueprintCallable, Category = "Harmonics|Synth")
