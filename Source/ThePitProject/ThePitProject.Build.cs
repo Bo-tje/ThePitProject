@@ -27,7 +27,8 @@ public class ThePitProject : ModuleRules
 			System.IO.Path.Combine(ModuleDirectory, "Subsystems"),
 			System.IO.Path.Combine(ModuleDirectory, "Concepts/AirHockey"),
 			System.IO.Path.Combine(ModuleDirectory, "Concepts/HarmonicConvergence"),
-			System.IO.Path.Combine(ModuleDirectory, "Concepts/RhythmPressure")
+			System.IO.Path.Combine(ModuleDirectory, "Concepts/RhythmPressure"),
+			System.IO.Path.Combine(ModuleDirectory, "Concepts/TheFlock")
 		});
 	}
 }
