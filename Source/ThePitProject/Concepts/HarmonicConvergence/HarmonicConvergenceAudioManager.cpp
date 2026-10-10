@@ -106,16 +106,16 @@ void AHarmonicConvergenceAudioManager::InitializeDefaultStations()
 	}
 }
 
-void AHarmonicConvergenceAudioManager::SetHarmonicScale(EHarmonicScaleMode NewMode)
+void AHarmonicConvergenceAudioManager::SetHarmonicScale(EHarmonicScaleMode NewScaleMode)
 {
-	ScaleMode = NewMode;
+	ScaleMode = NewScaleMode;
 	ApplyHarmonicScaleFrequencies();
 
-	for (const FStationVoiceConfig& Config : StationConfigs)
+	for (const FStationVoiceConfig& StationConfig : StationConfigs)
 	{
-		if (FVoiceRuntimeState* State = VoiceStates.Find(Config.ChannelName))
+		if (FVoiceRuntimeState* VoiceState = VoiceStates.Find(StationConfig.ChannelName))
 		{
-			State->CurrentFrequency = Config.BaseFrequencyHz;
+			VoiceState->CurrentFrequency = StationConfig.BaseFrequencyHz;
 		}
 	}
 }
@@ -153,24 +153,24 @@ void AHarmonicConvergenceAudioManager::ApplyHarmonicScaleFrequencies()
 		440.00f, 1318.51f, 523.25f, 587.33f, 1567.98f, 196.00f, 659.25f, 2093.00f, 261.63f, 440.00f
 	};
 
-	for (int32 i = 0; i < StationConfigs.Num(); ++i)
+	for (int32 StationIndex = 0; StationIndex < StationConfigs.Num(); ++StationIndex)
 	{
 		switch (ScaleMode)
 		{
 		case EHarmonicScaleMode::PentatonicMajor:
-			StationConfigs[i].BaseFrequencyHz = OpenMajorFreqs[i % 20];
+			StationConfigs[StationIndex].BaseFrequencyHz = OpenMajorFreqs[StationIndex % 20];
 			break;
 		case EHarmonicScaleMode::LydianCelestial:
-			StationConfigs[i].BaseFrequencyHz = OpenLydianFreqs[i % 20];
+			StationConfigs[StationIndex].BaseFrequencyHz = OpenLydianFreqs[StationIndex % 20];
 			break;
 		case EHarmonicScaleMode::PentatonicMinor:
-			StationConfigs[i].BaseFrequencyHz = OpenMinorFreqs[i % 20];
+			StationConfigs[StationIndex].BaseFrequencyHz = OpenMinorFreqs[StationIndex % 20];
 			break;
 		case EHarmonicScaleMode::HirajoshiLuminous:
-			StationConfigs[i].BaseFrequencyHz = OpenHirajoshiFreqs[i % 20];
+			StationConfigs[StationIndex].BaseFrequencyHz = OpenHirajoshiFreqs[StationIndex % 20];
 			break;
 		case EHarmonicScaleMode::DorianAmbient:
-			StationConfigs[i].BaseFrequencyHz = OpenDorianFreqs[i % 20];
+			StationConfigs[StationIndex].BaseFrequencyHz = OpenDorianFreqs[StationIndex % 20];
 			break;
 		case EHarmonicScaleMode::CustomFrequencies:
 		default:
@@ -179,126 +179,118 @@ void AHarmonicConvergenceAudioManager::ApplyHarmonicScaleFrequencies()
 	}
 }
 
-void AHarmonicConvergenceAudioManager::HandleOSCButtonPressed(FName Channel)
+void AHarmonicConvergenceAudioManager::HandleOSCButtonPressed(FName StationChannelName)
 {
-	TriggerStationNoteOn(Channel);
+	TriggerStationNoteOn(StationChannelName);
 }
 
-void AHarmonicConvergenceAudioManager::HandleOSCButtonReleased(FName Channel)
+void AHarmonicConvergenceAudioManager::HandleOSCButtonReleased(FName StationChannelName)
 {
-	TriggerStationNoteOff(Channel);
+	TriggerStationNoteOff(StationChannelName);
 }
 
-void AHarmonicConvergenceAudioManager::HandleOSCInputChanged(FName Channel, float Value, float Delta)
+void AHarmonicConvergenceAudioManager::HandleOSCInputChanged(FName StationChannelName, float InputValue, float ValueDelta)
 {
-	SetStationPressure(Channel, Value);
+	SetStationPressure(StationChannelName, InputValue);
 }
 
-void AHarmonicConvergenceAudioManager::SetStationPressure(FName Channel, float Pressure)
+void AHarmonicConvergenceAudioManager::SetStationPressure(FName StationChannelName, float NormalizedPressure)
 {
-	if (FVoiceRuntimeState* State = VoiceStates.Find(Channel))
+	if (FVoiceRuntimeState* VoiceState = VoiceStates.Find(StationChannelName))
 	{
-		State->CurrentPressure = FMath::Clamp(Pressure, 0.0f, 1.0f);
+		VoiceState->CurrentPressure = FMath::Clamp(NormalizedPressure, 0.0f, 1.0f);
 	}
 }
 
-void AHarmonicConvergenceAudioManager::TriggerStationNoteOn(FName Channel)
+void AHarmonicConvergenceAudioManager::TriggerStationNoteOn(FName StationChannelName)
 {
-	IdleTimer = 0.0f; // Reset idle attract timer
+	InactivityDurationSeconds = 0.0f; // Reset idle inactivity timer
 
-	int32 VoiceIndex = INDEX_NONE;
-	float VoicePan = 0.0f;
-	EVoiceTimbreProfile Timbre = EVoiceTimbreProfile::WarmPad;
+	int32 FoundVoiceIndex = INDEX_NONE;
+	float StationVoicePan = 0.0f;
+	EVoiceTimbreProfile StationTimbre = EVoiceTimbreProfile::WarmPad;
 
-	for (int32 i = 0; i < StationConfigs.Num(); ++i)
+	for (int32 StationIndex = 0; StationIndex < StationConfigs.Num(); ++StationIndex)
 	{
-		if (StationConfigs[i].ChannelName == Channel)
+		if (StationConfigs[StationIndex].ChannelName == StationChannelName)
 		{
-			VoiceIndex = i;
-			VoicePan = StationConfigs[i].PanPosition;
-			Timbre = StationConfigs[i].TimbreProfile;
+			FoundVoiceIndex = StationIndex;
+			StationVoicePan = StationConfigs[StationIndex].PanPosition;
+			StationTimbre = StationConfigs[StationIndex].TimbreProfile;
 			break;
 		}
 	}
 
-	if (FVoiceRuntimeState* State = VoiceStates.Find(Channel))
+	if (FVoiceRuntimeState* VoiceState = VoiceStates.Find(StationChannelName))
 	{
-		State->bIsPressed = true;
-		State->CurrentHoldDuration = 0.0f;
-		State->CurrentPressure = 1.0f;
+		VoiceState->bIsPressed = true;
+		VoiceState->CurrentHoldDuration = 0.0f;
+		VoiceState->CurrentPressure = 1.0f;
 
 		// 1. Direct Pure C++ Procedural Synth Trigger with Timbre Profile
-		if (ProceduralSynthComponent && VoiceIndex != INDEX_NONE)
+		if (ProceduralSynthComponent && FoundVoiceIndex != INDEX_NONE)
 		{
-			ProceduralSynthComponent->NoteOn(VoiceIndex, State->CurrentFrequency, VoicePan, Timbre);
+			ProceduralSynthComponent->NoteOn(FoundVoiceIndex, VoiceState->CurrentFrequency, StationVoicePan, StationTimbre);
 		}
 
-		// 2. Optional MetaSound Trigger
+		// 2. Broadcast high-level station event for Niagara / Blueprints
+		OnStationVoiceStarted.Broadcast(StationChannelName, VoiceState->CurrentFrequency);
+
+		// 3. Optional MetaSound Trigger
 		if (CentralConvergenceAudioComponent && CentralConvergenceAudioComponent->IsPlaying())
 		{
-			FString TriggerName = FString::Printf(TEXT("Trigger_%s_On"), *Channel.ToString());
+			const FString TriggerName = FString::Printf(TEXT("Trigger_%s_On"), *StationChannelName.ToString());
 			CentralConvergenceAudioComponent->SetTriggerParameter(FName(*TriggerName));
 		}
 	}
 }
 
-void AHarmonicConvergenceAudioManager::TriggerStationNoteOff(FName Channel)
+void AHarmonicConvergenceAudioManager::TriggerStationNoteOff(FName StationChannelName)
 {
-	IdleTimer = 0.0f;
+	InactivityDurationSeconds = 0.0f;
 
-	int32 VoiceIndex = INDEX_NONE;
-	for (int32 i = 0; i < StationConfigs.Num(); ++i)
+	int32 FoundVoiceIndex = INDEX_NONE;
+	for (int32 StationIndex = 0; StationIndex < StationConfigs.Num(); ++StationIndex)
 	{
-		if (StationConfigs[i].ChannelName == Channel)
+		if (StationConfigs[StationIndex].ChannelName == StationChannelName)
 		{
-			VoiceIndex = i;
+			FoundVoiceIndex = StationIndex;
 			break;
 		}
 	}
 
-	if (FVoiceRuntimeState* State = VoiceStates.Find(Channel))
+	if (FVoiceRuntimeState* VoiceState = VoiceStates.Find(StationChannelName))
 	{
-		if (State->bIsPressed)
+		if (VoiceState->bIsPressed)
 		{
-			if (State->CurrentHoldDuration >= ShockwaveThresholdHoldTime)
-			{
-				OnShockwaveReleased.Broadcast(Channel, State->CurrentHoldDuration);
-				
-				if (ProceduralSynthComponent)
-				{
-					ProceduralSynthComponent->TriggerShockwave();
-				}
-				if (CentralConvergenceAudioComponent && CentralConvergenceAudioComponent->IsPlaying())
-				{
-					CentralConvergenceAudioComponent->SetTriggerParameter(TEXT("Trigger_Shockwave"));
-				}
-			}
-
-			State->bIsPressed = false;
-			State->ModulationIntensity = 0.0f;
-			State->CurrentPressure = 0.0f;
+			VoiceState->bIsPressed = false;
+			VoiceState->ModulationIntensity = 0.0f;
+			VoiceState->CurrentPressure = 0.0f;
 
 			// 1. Direct Pure C++ Procedural Synth Trigger
-			if (ProceduralSynthComponent && VoiceIndex != INDEX_NONE)
+			if (ProceduralSynthComponent && FoundVoiceIndex != INDEX_NONE)
 			{
-				ProceduralSynthComponent->NoteOff(VoiceIndex);
+				ProceduralSynthComponent->NoteOff(FoundVoiceIndex);
 			}
 
-			// 2. Optional MetaSound Trigger
+			// 2. Broadcast high-level station event for Niagara / Blueprints
+			OnStationVoiceStopped.Broadcast(StationChannelName);
+
+			// 3. Optional MetaSound Trigger
 			if (CentralConvergenceAudioComponent && CentralConvergenceAudioComponent->IsPlaying())
 			{
-				FString TriggerName = FString::Printf(TEXT("Trigger_%s_Off"), *Channel.ToString());
+				const FString TriggerName = FString::Printf(TEXT("Trigger_%s_Off"), *StationChannelName.ToString());
 				CentralConvergenceAudioComponent->SetTriggerParameter(FName(*TriggerName));
 			}
 		}
 	}
 }
 
-bool AHarmonicConvergenceAudioManager::GetVoiceState(FName Channel, FVoiceRuntimeState& OutState) const
+bool AHarmonicConvergenceAudioManager::GetVoiceState(FName StationChannelName, FVoiceRuntimeState& OutState) const
 {
-	if (const FVoiceRuntimeState* State = VoiceStates.Find(Channel))
+	if (const FVoiceRuntimeState* VoiceState = VoiceStates.Find(StationChannelName))
 	{
-		OutState = *State;
+		OutState = *VoiceState;
 		return true;
 	}
 	return false;
@@ -315,92 +307,78 @@ void AHarmonicConvergenceAudioManager::Tick(float DeltaTime)
 void AHarmonicConvergenceAudioManager::UpdateConvergenceParameters(float DeltaTime)
 {
 	ActiveVoiceCount = 0;
-	float TotalModulation = 0.0f;
+	float TotalModulationIntensityAccumulator = 0.0f;
 
-	for (int32 i = 0; i < StationConfigs.Num(); ++i)
+	for (int32 StationIndex = 0; StationIndex < StationConfigs.Num(); ++StationIndex)
 	{
-		const FName Channel = StationConfigs[i].ChannelName;
-		if (FVoiceRuntimeState* State = VoiceStates.Find(Channel))
+		const FName StationChannelName = StationConfigs[StationIndex].ChannelName;
+		if (FVoiceRuntimeState* VoiceState = VoiceStates.Find(StationChannelName))
 		{
-			if (State->bIsPressed)
+			if (VoiceState->bIsPressed)
 			{
 				ActiveVoiceCount++;
-				State->CurrentHoldDuration += DeltaTime;
+				VoiceState->CurrentHoldDuration += DeltaTime;
 
-				// Dynamic modulation builds over 4 seconds, scaled by pressure
-				const float BaseMod = FMath::Clamp(State->CurrentHoldDuration / 4.0f, 0.0f, 1.0f);
-				State->ModulationIntensity = FMath::Max(BaseMod, State->CurrentPressure * 0.5f);
-				TotalModulation += State->ModulationIntensity;
+				// Dynamic timbre modulation builds over 4 seconds of holding, scaled by analog pressure
+				const float HoldProgressRatio = FMath::Clamp(VoiceState->CurrentHoldDuration / 4.0f, 0.0f, 1.0f);
+				VoiceState->ModulationIntensity = FMath::Max(HoldProgressRatio, VoiceState->CurrentPressure * 0.5f);
+				TotalModulationIntensityAccumulator += VoiceState->ModulationIntensity;
 
 				if (ProceduralSynthComponent)
 				{
-					ProceduralSynthComponent->SetVoiceModulation(i, State->ModulationIntensity);
+					ProceduralSynthComponent->SetVoiceModulation(StationIndex, VoiceState->ModulationIntensity);
 				}
 			}
 		}
 	}
 
-	const int32 TotalConfigured = FMath::Max(1, StationConfigs.Num());
-	// Exponential perceived energy curve: 1 player gives gentle energy, 4 players give massive crescendo
-	const float NormalizedActive = (ActiveVoiceCount > 0) ? (ActiveVoiceCount / (float)TotalConfigured) : 0.0f;
-	const float ExponentialEnergy = FMath::Pow(NormalizedActive, 1.35f) * 2.0f;
-	const float TargetEnergy = ExponentialEnergy * (1.0f + 0.35f * TotalModulation);
+	const int32 TotalConfiguredStations = FMath::Max(1, StationConfigs.Num());
+	// Exponential perceived energy curve: 1 player gives gentle energy, 4+ players give massive crescendo
+	const float ActiveStationRatio = (ActiveVoiceCount > 0) ? (ActiveVoiceCount / static_cast<float>(TotalConfiguredStations)) : 0.0f;
+	const float BaseConvergenceCurve = FMath::Pow(ActiveStationRatio, 1.35f) * 2.0f;
+	const float TargetConvergenceEnergy = BaseConvergenceCurve * (1.0f + 0.35f * TotalModulationIntensityAccumulator);
 
-	// Responsive smooth interpolation
-	ConvergenceEnergy = FMath::FInterpTo(ConvergenceEnergy, TargetEnergy, DeltaTime, 5.0f);
+	// Responsive smooth interpolation toward target energy
+	ConvergenceEnergy = FMath::FInterpTo(ConvergenceEnergy, TargetConvergenceEnergy, DeltaTime, 5.0f);
 
 	if (ProceduralSynthComponent)
 	{
 		ProceduralSynthComponent->SetConvergenceEnergy(ConvergenceEnergy);
 	}
-
-	// Harmonic Crescendo detection (when all stations held > CrescendoRequiredHoldTime)
-	if (ActiveVoiceCount == StationConfigs.Num() && StationConfigs.Num() > 1)
-	{
-		AllStationsActiveTimer += DeltaTime;
-		if (AllStationsActiveTimer >= CrescendoRequiredHoldTime && !bCrescendoActive)
-		{
-			bCrescendoActive = true;
-			OnHarmonicCrescendo.Broadcast(ConvergenceEnergy);
-			if (CentralConvergenceAudioComponent && CentralConvergenceAudioComponent->IsPlaying())
-			{
-				CentralConvergenceAudioComponent->SetTriggerParameter(TEXT("Trigger_Crescendo"));
-			}
-		}
-	}
-	else
-	{
-		AllStationsActiveTimer = 0.0f;
-		bCrescendoActive = false;
-	}
 }
 
 void AHarmonicConvergenceAudioManager::UpdateAttractMode(float DeltaTime)
 {
-	if (!bEnableAttractMode) return;
+	if (!bEnableAttractMode)
+	{
+		return;
+	}
 
 	if (ActiveVoiceCount == 0)
 	{
-		IdleTimer += DeltaTime;
-		if (IdleTimer >= AttractIdleThreshold)
+		InactivityDurationSeconds += DeltaTime;
+		if (InactivityDurationSeconds >= AttractIdleThreshold)
 		{
-			ChimeTimer += DeltaTime;
-			if (ChimeTimer >= AttractChimeInterval)
+			TimeSinceLastAttractChimeSeconds += DeltaTime;
+			if (TimeSinceLastAttractChimeSeconds >= AttractChimeInterval)
 			{
-				ChimeTimer = 0.0f;
+				TimeSinceLastAttractChimeSeconds = 0.0f;
 				if (StationConfigs.Num() > 0)
 				{
-					const int32 RandomIndex = FMath::RandRange(0, StationConfigs.Num() - 1);
-					const float ChimeFreq = StationConfigs[RandomIndex].BaseFrequencyHz;
+					const int32 RandomStationIndex = FMath::RandRange(0, StationConfigs.Num() - 1);
+					const FName StationChannelName = StationConfigs[RandomStationIndex].ChannelName;
+					const float ChimeFrequencyHz = StationConfigs[RandomStationIndex].BaseFrequencyHz;
 
 					if (ProceduralSynthComponent)
 					{
-						ProceduralSynthComponent->TriggerAttractPing(ChimeFreq);
+						ProceduralSynthComponent->TriggerAttractPing(ChimeFrequencyHz);
 					}
+
+					OnAttractPingTriggered.Broadcast(StationChannelName, ChimeFrequencyHz);
 
 					if (CentralConvergenceAudioComponent && CentralConvergenceAudioComponent->IsPlaying())
 					{
-						CentralConvergenceAudioComponent->SetFloatParameter(TEXT("AttractFrequency"), ChimeFreq);
+						CentralConvergenceAudioComponent->SetFloatParameter(TEXT("AttractFrequency"), ChimeFrequencyHz);
 						CentralConvergenceAudioComponent->SetTriggerParameter(TEXT("Trigger_AttractPing"));
 					}
 				}
@@ -409,8 +387,8 @@ void AHarmonicConvergenceAudioManager::UpdateAttractMode(float DeltaTime)
 	}
 	else
 	{
-		IdleTimer = 0.0f;
-		ChimeTimer = 0.0f;
+		InactivityDurationSeconds = 0.0f;
+		TimeSinceLastAttractChimeSeconds = 0.0f;
 	}
 }
 
@@ -427,20 +405,20 @@ void AHarmonicConvergenceAudioManager::PushMetaSoundParameters()
 	CentralConvergenceAudioComponent->SetFloatParameter(TEXT("ConvergenceEnergy"), ConvergenceEnergy);
 
 	// Per-voice frequency, modulation, and stereo pan parameters
-	for (int32 i = 0; i < StationConfigs.Num(); ++i)
+	for (int32 StationIndex = 0; StationIndex < StationConfigs.Num(); ++StationIndex)
 	{
-		const FName Channel = StationConfigs[i].ChannelName;
-		if (const FVoiceRuntimeState* State = VoiceStates.Find(Channel))
+		const FName StationChannelName = StationConfigs[StationIndex].ChannelName;
+		if (const FVoiceRuntimeState* VoiceState = VoiceStates.Find(StationChannelName))
 		{
-			const FString FreqParam = FString::Printf(TEXT("%s_Frequency"), *Channel.ToString());
-			const FString ModParam = FString::Printf(TEXT("%s_Modulation"), *Channel.ToString());
-			const FString ActiveParam = FString::Printf(TEXT("%s_IsActive"), *Channel.ToString());
-			const FString PanParam = FString::Printf(TEXT("%s_Pan"), *Channel.ToString());
+			const FString FreqParam = FString::Printf(TEXT("%s_Frequency"), *StationChannelName.ToString());
+			const FString ModParam = FString::Printf(TEXT("%s_Modulation"), *StationChannelName.ToString());
+			const FString ActiveParam = FString::Printf(TEXT("%s_IsActive"), *StationChannelName.ToString());
+			const FString PanParam = FString::Printf(TEXT("%s_Pan"), *StationChannelName.ToString());
 
-			CentralConvergenceAudioComponent->SetFloatParameter(FName(*FreqParam), State->CurrentFrequency);
-			CentralConvergenceAudioComponent->SetFloatParameter(FName(*ModParam), State->ModulationIntensity);
-			CentralConvergenceAudioComponent->SetBoolParameter(FName(*ActiveParam), State->bIsPressed);
-			CentralConvergenceAudioComponent->SetFloatParameter(FName(*PanParam), StationConfigs[i].PanPosition);
+			CentralConvergenceAudioComponent->SetFloatParameter(FName(*FreqParam), VoiceState->CurrentFrequency);
+			CentralConvergenceAudioComponent->SetFloatParameter(FName(*ModParam), VoiceState->ModulationIntensity);
+			CentralConvergenceAudioComponent->SetBoolParameter(FName(*ActiveParam), VoiceState->bIsPressed);
+			CentralConvergenceAudioComponent->SetFloatParameter(FName(*PanParam), StationConfigs[StationIndex].PanPosition);
 		}
 	}
 }

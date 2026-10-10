@@ -8,127 +8,142 @@
 // Unconditionally Stable 2-Pole State-Variable Low-Pass Filter (Bilinear / Trapezoidal SVF)
 struct FConvergenceResonantFilter
 {
-	float Ic1eq = 0.0f;
-	float Ic2eq = 0.0f;
+	float IntegratorState1 = 0.0f; // Integrator 1 state memory (Ic1eq)
+	float IntegratorState2 = 0.0f; // Integrator 2 state memory (Ic2eq)
 
-	inline float Process(float InSample, float CutoffHz, float Q, float SampleRate)
+	inline float Process(float InputSample, float CutoffFrequencyHz, float ResonanceQualityQ, float SampleRate)
 	{
-		const float ClampedCutoff = FMath::Clamp(CutoffHz, 20.0f, SampleRate * 0.45f);
-		const float SafeQ = FMath::Clamp(Q, 0.5f, 6.0f);
+		const float ClampedCutoffHz = FMath::Clamp(CutoffFrequencyHz, 20.0f, SampleRate * 0.45f);
+		const float SafeQualityQ = FMath::Clamp(ResonanceQualityQ, 0.5f, 6.0f);
 
-		const float G = FMath::Tan(PI * (ClampedCutoff / SampleRate));
-		const float K = 1.0f / SafeQ;
-		const float A1 = 1.0f / (1.0f + G * (G + K));
-		const float A2 = G * A1;
-		const float A3 = G * A2;
+		const float TangentPrewarp = FMath::Tan(PI * (ClampedCutoffHz / SampleRate));
+		const float DampingFactorK = 1.0f / SafeQualityQ;
+		const float CoefficientA1 = 1.0f / (1.0f + TangentPrewarp * (TangentPrewarp + DampingFactorK));
+		const float CoefficientA2 = TangentPrewarp * CoefficientA1;
+		const float CoefficientA3 = TangentPrewarp * CoefficientA2;
 
-		const float V3 = InSample - Ic2eq;
-		const float V1 = A1 * Ic1eq + A2 * V3;
-		const float V2 = Ic2eq + A2 * Ic1eq + A3 * V3;
+		const float HighPassNode = InputSample - IntegratorState2;
+		const float BandPassNode = CoefficientA1 * IntegratorState1 + CoefficientA2 * HighPassNode;
+		const float LowPassNode = IntegratorState2 + CoefficientA2 * IntegratorState1 + CoefficientA3 * HighPassNode;
 
-		Ic1eq = 2.0f * V1 - Ic1eq;
-		Ic2eq = 2.0f * V2 - Ic2eq;
+		IntegratorState1 = 2.0f * BandPassNode - IntegratorState1;
+		IntegratorState2 = 2.0f * LowPassNode - IntegratorState2;
 
-		if (!FMath::IsFinite(V2))
+		if (!FMath::IsFinite(LowPassNode))
 		{
 			Reset();
 			return 0.0f;
 		}
 
-		return V2;
+		return LowPassNode;
 	}
 
 	inline void Reset()
 	{
-		Ic1eq = 0.0f;
-		Ic2eq = 0.0f;
+		IntegratorState1 = 0.0f;
+		IntegratorState2 = 0.0f;
 	}
 };
 
 // 4-Tap Stereo Diffusion Reverb Tank for cinematic ambient blending
 struct FAmbientDiffusionTank
 {
-	static constexpr int32 DelaySize1 = 1447;
-	static constexpr int32 DelaySize2 = 1693;
-	static constexpr int32 DelaySize3 = 1979;
-	static constexpr int32 DelaySize4 = 2243;
+	static constexpr int32 DelayBufferSizeTap1 = 1447;
+	static constexpr int32 DelayBufferSizeTap2 = 1693;
+	static constexpr int32 DelayBufferSizeTap3 = 1979;
+	static constexpr int32 DelayBufferSizeTap4 = 2243;
 
-	float Buf1[DelaySize1] = {0.0f};
-	float Buf2[DelaySize2] = {0.0f};
-	float Buf3[DelaySize3] = {0.0f};
-	float Buf4[DelaySize4] = {0.0f};
+	float DelayBufferTap1[DelayBufferSizeTap1] = {0.0f};
+	float DelayBufferTap2[DelayBufferSizeTap2] = {0.0f};
+	float DelayBufferTap3[DelayBufferSizeTap3] = {0.0f};
+	float DelayBufferTap4[DelayBufferSizeTap4] = {0.0f};
 
-	int32 Idx1 = 0, Idx2 = 0, Idx3 = 0, Idx4 = 0;
-	float Damp1 = 0.0f, Damp2 = 0.0f, Damp3 = 0.0f, Damp4 = 0.0f;
+	int32 WriteIndexTap1 = 0;
+	int32 WriteIndexTap2 = 0;
+	int32 WriteIndexTap3 = 0;
+	int32 WriteIndexTap4 = 0;
 
-	inline void Process(float InLeft, float InRight, float Feedback, float& OutLeft, float& OutRight)
+	float LowPassDampingTap1 = 0.0f;
+	float LowPassDampingTap2 = 0.0f;
+	float LowPassDampingTap3 = 0.0f;
+	float LowPassDampingTap4 = 0.0f;
+
+	inline void Process(float InLeftSample, float InRightSample, float FeedbackGain, float& OutLeftSample, float& OutRightSample)
 	{
-		const float Fb = FMath::Clamp(Feedback, 0.0f, 0.88f);
-		const float Input = (InLeft + InRight) * 0.35f;
+		const float ClampedFeedbackGain = FMath::Clamp(FeedbackGain, 0.0f, 0.88f);
+		const float MonoInputSample = (InLeftSample + InRightSample) * 0.35f;
 
-		const float Out1 = Buf1[Idx1];
-		Damp1 = Damp1 * 0.45f + Out1 * 0.55f;
-		Buf1[Idx1] = Input + Damp1 * Fb;
-		if (++Idx1 >= DelaySize1) Idx1 = 0;
+		// Tap 1
+		const float DelayedSampleTap1 = DelayBufferTap1[WriteIndexTap1];
+		LowPassDampingTap1 = LowPassDampingTap1 * 0.45f + DelayedSampleTap1 * 0.55f;
+		DelayBufferTap1[WriteIndexTap1] = MonoInputSample + LowPassDampingTap1 * ClampedFeedbackGain;
+		if (++WriteIndexTap1 >= DelayBufferSizeTap1) WriteIndexTap1 = 0;
 
-		const float Out2 = Buf2[Idx2];
-		Damp2 = Damp2 * 0.45f + Out2 * 0.55f;
-		Buf2[Idx2] = Input + Damp2 * Fb;
-		if (++Idx2 >= DelaySize2) Idx2 = 0;
+		// Tap 2
+		const float DelayedSampleTap2 = DelayBufferTap2[WriteIndexTap2];
+		LowPassDampingTap2 = LowPassDampingTap2 * 0.45f + DelayedSampleTap2 * 0.55f;
+		DelayBufferTap2[WriteIndexTap2] = MonoInputSample + LowPassDampingTap2 * ClampedFeedbackGain;
+		if (++WriteIndexTap2 >= DelayBufferSizeTap2) WriteIndexTap2 = 0;
 
-		const float Out3 = Buf3[Idx3];
-		Damp3 = Damp3 * 0.45f + Out3 * 0.55f;
-		Buf3[Idx3] = Input + Damp3 * Fb;
-		if (++Idx3 >= DelaySize3) Idx3 = 0;
+		// Tap 3
+		const float DelayedSampleTap3 = DelayBufferTap3[WriteIndexTap3];
+		LowPassDampingTap3 = LowPassDampingTap3 * 0.45f + DelayedSampleTap3 * 0.55f;
+		DelayBufferTap3[WriteIndexTap3] = MonoInputSample + LowPassDampingTap3 * ClampedFeedbackGain;
+		if (++WriteIndexTap3 >= DelayBufferSizeTap3) WriteIndexTap3 = 0;
 
-		const float Out4 = Buf4[Idx4];
-		Damp4 = Damp4 * 0.45f + Out4 * 0.55f;
-		Buf4[Idx4] = Input + Damp4 * Fb;
-		if (++Idx4 >= DelaySize4) Idx4 = 0;
+		// Tap 4
+		const float DelayedSampleTap4 = DelayBufferTap4[WriteIndexTap4];
+		LowPassDampingTap4 = LowPassDampingTap4 * 0.45f + DelayedSampleTap4 * 0.55f;
+		DelayBufferTap4[WriteIndexTap4] = MonoInputSample + LowPassDampingTap4 * ClampedFeedbackGain;
+		if (++WriteIndexTap4 >= DelayBufferSizeTap4) WriteIndexTap4 = 0;
 
-		OutLeft = (Out1 - Out3) * 0.5f;
-		OutRight = (Out2 - Out4) * 0.5f;
+		// Cross-coupled stereo output
+		OutLeftSample = (DelayedSampleTap1 - DelayedSampleTap3) * 0.5f;
+		OutRightSample = (DelayedSampleTap2 - DelayedSampleTap4) * 0.5f;
 	}
 
 	inline void Reset()
 	{
-		FMemory::Memzero(Buf1, sizeof(Buf1));
-		FMemory::Memzero(Buf2, sizeof(Buf2));
-		FMemory::Memzero(Buf3, sizeof(Buf3));
-		FMemory::Memzero(Buf4, sizeof(Buf4));
-		Idx1 = Idx2 = Idx3 = Idx4 = 0;
-		Damp1 = Damp2 = Damp3 = Damp4 = 0.0f;
+		FMemory::Memzero(DelayBufferTap1, sizeof(DelayBufferTap1));
+		FMemory::Memzero(DelayBufferTap2, sizeof(DelayBufferTap2));
+		FMemory::Memzero(DelayBufferTap3, sizeof(DelayBufferTap3));
+		FMemory::Memzero(DelayBufferTap4, sizeof(DelayBufferTap4));
+		WriteIndexTap1 = WriteIndexTap2 = WriteIndexTap3 = WriteIndexTap4 = 0;
+		LowPassDampingTap1 = LowPassDampingTap2 = LowPassDampingTap3 = LowPassDampingTap4 = 0.0f;
 	}
 };
 
 // Multi-Tier Polyphonic Voice Engine
 struct FConvergenceVoiceDSP
 {
-	float Frequency = 261.63f;
-	float PhaseA = 0.0f;
-	float PhaseB = 0.0f;
-	float LfoPhase = 0.0f;
-	float Modulation = 0.0f;
-	float Pan = 0.0f; // -1.0 Left to +1.0 Right
-	EVoiceTimbreProfile Profile = EVoiceTimbreProfile::WarmPad;
+	float NoteFrequencyHz = 261.63f;
+	float CarrierPhaseAngle = 0.0f;
+	float HarmonicPhaseAngle = 0.0f;
+	float VibratoLfoPhaseAngle = 0.0f;
+	float HoldModulationIntensity = 0.0f;
+	float StereoPanPosition = 0.0f; // -1.0 Left to +1.0 Right
+	EVoiceTimbreProfile TimbreProfile = EVoiceTimbreProfile::WarmPad;
 
 	// Envelope states
-	bool bActive = false;
-	float EnvValue = 0.0f;
+	bool bIsVoiceActive = false;
+	float AmplitudeEnvelope = 0.0f;
 
 	// Tactile Note-On Strike Transient (Fast 12ms attack bite)
-	float TransientEnv = 0.0f;
-	float TransientPhase = 0.0f;
+	float TransientEnvelope = 0.0f;
+	float TransientPhaseAngle = 0.0f;
 
-	float GenerateSample(float SampleRate, float& OutLeft, float& OutRight);
-	void NoteOn(EVoiceTimbreProfile InProfile)
+	float GenerateSample(float SampleRate, float& OutLeftSample, float& OutRightSample);
+	void NoteOn(EVoiceTimbreProfile InTimbreProfile)
 	{
-		Profile = InProfile;
-		bActive = true;
-		TransientEnv = 1.0f; // Fire instant attack transient on every button press
-		TransientPhase = 0.0f;
+		TimbreProfile = InTimbreProfile;
+		bIsVoiceActive = true;
+		TransientEnvelope = 1.0f; // Fire instant attack transient on every button press
+		TransientPhaseAngle = 0.0f;
 	}
-	void NoteOff() { bActive = false; }
+	void NoteOff()
+	{
+		bIsVoiceActive = false;
+	}
 };
 
 UCLASS(ClassGroup = (Custom), meta = (BlueprintSpawnableComponent))
@@ -143,9 +158,21 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Harmonics|Audio")
 	bool bMonoMode = true;
 
+	// Master volume scalar for the central 65.4 Hz sub-bass drone (reduced from previous harsh defaults)
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Harmonics|Audio", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	float SubBassDroneVolume = 0.08f;
+
+	// Baseline filter cutoff in Hz when idle/solo (raised from 220Hz to 350Hz for cleaner mids)
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Harmonics|Audio", meta = (ClampMin = "100.0", ClampMax = "2000.0"))
+	float FilterBaselineCutoffHz = 350.0f;
+
+	// Filter resonance Q factor (lowered from 1.4 to 0.85 to eliminate boomy low-end resonance)
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Harmonics|Audio", meta = (ClampMin = "0.5", ClampMax = "3.0"))
+	float FilterResonanceQ = 0.85f;
+
 	// --- Note Triggers ---
 	UFUNCTION(BlueprintCallable, Category = "Harmonics|Synth")
-	void NoteOn(int32 VoiceIndex, float FrequencyHz, float Pan = 0.0f, EVoiceTimbreProfile Profile = EVoiceTimbreProfile::WarmPad);
+	void NoteOn(int32 VoiceIndex, float NoteFrequencyHz, float StereoPan = 0.0f, EVoiceTimbreProfile TimbreProfile = EVoiceTimbreProfile::WarmPad);
 
 	UFUNCTION(BlueprintCallable, Category = "Harmonics|Synth")
 	void NoteOff(int32 VoiceIndex);
@@ -157,10 +184,7 @@ public:
 	void SetConvergenceEnergy(float Energy);
 
 	UFUNCTION(BlueprintCallable, Category = "Harmonics|Synth")
-	void TriggerShockwave();
-
-	UFUNCTION(BlueprintCallable, Category = "Harmonics|Synth")
-	void TriggerAttractPing(float FrequencyHz);
+	void TriggerAttractPing(float ChimeFrequencyHz);
 
 protected:
 	virtual bool Init(int32& SampleRate) override;
@@ -171,23 +195,20 @@ private:
 	FConvergenceVoiceDSP Voices[MaxVoices];
 
 	// Central Sub-Bass Drone (65.4 Hz C2)
-	float DronePhase = 0.0f;
+	float RootSubBassDronePhaseAngle = 0.0f;
 	float TargetConvergenceEnergy = 0.0f;
 	float CurrentConvergenceEnergy = 0.0f;
 
-	// Shockwave State
-	float ShockwaveEnv = 0.0f;
-	float ShockwavePhase = 0.0f;
-	float ShockwaveFreq = 95.0f;
+
 
 	// Attract Chime State
-	float AttractEnv = 0.0f;
-	float AttractPhase = 0.0f;
-	float AttractFreq = 523.25f;
+	float AttractChimeEnvelope = 0.0f;
+	float AttractChimePhaseAngle = 0.0f;
+	float AttractChimeFrequencyHz = 523.25f;
 
 	// Resonant State-Variable Filters for Left and Right Channels
-	FConvergenceResonantFilter LeftFilter;
-	FConvergenceResonantFilter RightFilter;
+	FConvergenceResonantFilter LeftChannelFilter;
+	FConvergenceResonantFilter RightChannelFilter;
 
 	// Ambient Diffusion Tank
 	FAmbientDiffusionTank DiffusionTank;

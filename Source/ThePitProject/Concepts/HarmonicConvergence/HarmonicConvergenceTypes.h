@@ -28,22 +28,28 @@ struct FStationVoiceConfig
 {
 	GENERATED_BODY()
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Voice")
+	// Hardware input OSC channel name (e.g. "player1", "player2")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Station Config")
 	FName ChannelName = NAME_None;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Voice")
+	// Musical base frequency in Hertz played when this station is triggered
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Station Config")
 	float BaseFrequencyHz = 261.63f; // Default C4
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Voice")
+	// Synthesizer voice timbre character (WarmPad, SubBassPad, CrystallineChime, VortexSweep)
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Station Config")
 	EVoiceTimbreProfile TimbreProfile = EVoiceTimbreProfile::WarmPad;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Voice")
+	// Visual beam stream color emitted toward center pit for Niagara particles
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Station Config")
 	FLinearColor StreamColor = FLinearColor(0.0f, 0.9f, 1.0f, 1.0f);
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Voice")
-	float PanPosition = 0.0f; // -1.0 Left to +1.0 Right
+	// Stereo pan position across the railing perimeter (-1.0 = Far Left, 0.0 = Center, +1.0 = Far Right)
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Station Config")
+	float PanPosition = 0.0f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Voice")
+	// Physical 3D world location of this station's button console (origin for Niagara beam ribbons)
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Station Config")
 	FVector WorldStationLocation = FVector::ZeroVector;
 };
 
@@ -52,18 +58,23 @@ struct FVoiceRuntimeState
 {
 	GENERATED_BODY()
 
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
+	// Whether the station button is actively pressed / held down by a visitor
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Voice State")
 	bool bIsPressed = false;
 
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
-	float CurrentPressure = 0.0f; // Continuous analog pressure if available
+	// Continuous analog pressure amount (normalized 0.0 to 1.0)
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Voice State")
+	float CurrentPressure = 0.0f;
 
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
+	// Cumulative duration in seconds that the button has been held down continuously
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Voice State")
 	float CurrentHoldDuration = 0.0f;
 
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
-	float ModulationIntensity = 0.0f; // 0.0 -> 1.0 based on hold curve
+	// Dynamic modulation intensity (0.0 to 1.0) calculated from hold time curve and pressure
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Voice State")
+	float ModulationIntensity = 0.0f;
 
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
+	// Current active pitch frequency in Hertz (including any vibrato or scale shifts)
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Voice State")
 	float CurrentFrequency = 261.63f;
 };
