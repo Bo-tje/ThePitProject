@@ -31,6 +31,12 @@ AHarmonicConvergenceAudioManager::AHarmonicConvergenceAudioManager()
 	{
 		CenterVortexSystem = DefaultCoreSystem.Get();
 	}
+
+	static ConstructorHelpers::FObjectFinderOptional<UNiagaraSystem> DefaultCrystalSystem(TEXT("/Game/HarmonicConvergence/NS_BeatCrystal.NS_BeatCrystal"));
+	if (DefaultCrystalSystem.Succeeded())
+	{
+		BeatCrystalSystem = DefaultCrystalSystem.Get();
+	}
 }
 
 void AHarmonicConvergenceAudioManager::BeginPlay()
@@ -68,11 +74,31 @@ void AHarmonicConvergenceAudioManager::BeginPlay()
 	}
 
 	const FVector CenterLoc = GetActorLocation();
+
+	// 1. Spawn Central Vortex
 	if (CenterVortexSystem)
 	{
 		CenterVortexComponent = UNiagaraFunctionLibrary::SpawnSystemAtLocation(
 			GetWorld(), CenterVortexSystem, CenterLoc, FRotator::ZeroRotator, FVector(1.0f), false, true);
 	}
+
+	// 2. Pre-spawn 4 Persistent Beat Crystal Components (one per rhythmic slot)
+	BeatCrystalComponents.SetNum(4);
+	for (int32 SlotIdx = 0; SlotIdx < 4; ++SlotIdx)
+	{
+		BeatCrystalComponents[SlotIdx] = nullptr;
+		if (BeatCrystalSystem)
+		{
+			if (UNiagaraComponent* CrystalComp = UNiagaraFunctionLibrary::SpawnSystemAtLocation(
+				GetWorld(), BeatCrystalSystem, CenterLoc, FRotator::ZeroRotator, FVector(1.0f), false, false))
+			{
+				CrystalComp->Deactivate();
+				BeatCrystalComponents[SlotIdx] = CrystalComp;
+			}
+		}
+	}
+
+	// 3. Spawn per-station Beam Systems
 	for (const FStationVoiceConfig& Config : StationConfigs)
 	{
 		FVoiceRuntimeState State;
@@ -426,6 +452,29 @@ void AHarmonicConvergenceAudioManager::Tick(float DeltaTime)
 	UpdateNiagaraParameters(DeltaTime);
 	UpdateAttractMode(DeltaTime);
 	PushMetaSoundParameters();
+
+	// Master Beat Synchronization: trigger visual flash and floor pulse rings on the exact frame audio beats hit
+	if (ProceduralSynthComponent)
+	{
+		const int32 CurrentStep = ProceduralSynthComponent->GetCurrentBeatStep();
+		if (CurrentStep != LastBeatStep)
+		{
+			LastBeatStep = CurrentStep;
+			for (int32 SlotIdx = 0; SlotIdx < PersistentBeatSlots.Num(); ++SlotIdx)
+			{
+				if (PersistentBeatSlots[SlotIdx].bIsActive && PersistentBeatSlots[SlotIdx].AssignedBeatStep == CurrentStep)
+				{
+					SlotPulseFlash[SlotIdx] = 1.0f;
+					SlotBeatPulse[SlotIdx] = 1.0f;
+					if (BeatCrystalComponents.IsValidIndex(SlotIdx) && BeatCrystalComponents[SlotIdx])
+					{
+						BeatCrystalComponents[SlotIdx]->SetVariableFloat(FName(TEXT("User.PulseFlash")), 1.0f);
+						BeatCrystalComponents[SlotIdx]->SetVariableFloat(FName(TEXT("User.BeatPulse")), 1.0f);
+					}
+				}
+			}
+		}
+	}
 }
 
 void AHarmonicConvergenceAudioManager::UpdateNiagaraParameters(float DeltaTime)
@@ -574,6 +623,23 @@ void AHarmonicConvergenceAudioManager::UpdateConvergenceParameters(float DeltaTi
 									1.0f);
 							}
 
+							// Position the visual light crystal 50% along the radial path to the center on the projection floor
+							const FVector WorldStationLoc = StationConfigs[StationIndex].WorldStationLocation;
+							const FVector CenterLoc = GetActorLocation();
+							FVector CrystalPos = FMath::Lerp(WorldStationLoc, CenterLoc, 0.50f);
+							CrystalPos.Z = CenterLoc.Z;
+
+							if (BeatCrystalComponents.IsValidIndex(TargetSlotIdx) && BeatCrystalComponents[TargetSlotIdx])
+							{
+								UNiagaraComponent* CrystalComp = BeatCrystalComponents[TargetSlotIdx];
+								CrystalComp->SetWorldLocation(CrystalPos);
+								CrystalComp->SetVariableLinearColor(FName(TEXT("User.CrystalColor")), StationConfigs[StationIndex].StreamColor);
+								CrystalComp->SetVariableFloat(FName(TEXT("User.PulseFlash")), 1.0f);
+								CrystalComp->SetVariableFloat(FName(TEXT("User.BeatPulse")), 1.0f);
+								CrystalComp->SetVariableFloat(FName(TEXT("User.LifespanRatio")), 1.0f);
+								CrystalComp->Activate(true);
+							}
+
 							OnPersistentBeatActivated.Broadcast(StationChannelName, Slot.AssignedBeatStep, Slot.BaseFrequencyHz);
 						}
 					}
@@ -628,6 +694,11 @@ void AHarmonicConvergenceAudioManager::UpdateBeatSlots(float DeltaTime)
 					ProceduralSynthComponent->SetRhythmicPulseSlot(SlotIdx, false);
 				}
 
+				if (BeatCrystalComponents.IsValidIndex(SlotIdx) && BeatCrystalComponents[SlotIdx])
+				{
+					BeatCrystalComponents[SlotIdx]->Deactivate();
+				}
+
 				OnPersistentBeatDeactivated.Broadcast(SlotIdx);
 				continue;
 			}
@@ -646,6 +717,18 @@ void AHarmonicConvergenceAudioManager::UpdateBeatSlots(float DeltaTime)
 				Slot.TimbreProfile,
 				FadeGain);
 		}
+
+		// Decay visual pulse flash and expanding beat ring parameters
+		SlotPulseFlash[SlotIdx] = FMath::FInterpTo(SlotPulseFlash[SlotIdx], 0.0f, DeltaTime, 9.0f);
+		SlotBeatPulse[SlotIdx] = FMath::FInterpConstantTo(SlotBeatPulse[SlotIdx], 0.0f, DeltaTime, 1.4f);
+
+		if (BeatCrystalComponents.IsValidIndex(SlotIdx) && BeatCrystalComponents[SlotIdx])
+		{
+			UNiagaraComponent* CrystalComp = BeatCrystalComponents[SlotIdx];
+			CrystalComp->SetVariableFloat(FName(TEXT("User.PulseFlash")), SlotPulseFlash[SlotIdx]);
+			CrystalComp->SetVariableFloat(FName(TEXT("User.BeatPulse")), SlotBeatPulse[SlotIdx]);
+			CrystalComp->SetVariableFloat(FName(TEXT("User.LifespanRatio")), FadeGain);
+		}
 	}
 }
 
@@ -661,6 +744,14 @@ void AHarmonicConvergenceAudioManager::ClearAllBeatSlots()
 	if (ProceduralSynthComponent)
 	{
 		ProceduralSynthComponent->ClearAllRhythmicPulseSlots();
+	}
+
+	for (UNiagaraComponent* Comp : BeatCrystalComponents)
+	{
+		if (Comp)
+		{
+			Comp->Deactivate();
+		}
 	}
 }
 

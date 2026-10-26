@@ -83,6 +83,10 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Harmonics|Setup")
 	TObjectPtr<UNiagaraSystem> CenterVortexSystem;
 
+	// Niagara system for the persistent beat light crystals and floor pulse rings
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Harmonics|Setup")
+	TObjectPtr<UNiagaraSystem> BeatCrystalSystem;
+
 	// Pure C++ Procedural Synth Component (Zero MetaSound Nodes Required)
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Harmonics|Audio")
 	TObjectPtr<UHarmonicConvergenceSynthComponent> ProceduralSynthComponent;
@@ -210,6 +214,13 @@ private:
 
 	UPROPERTY(Transient)
 	TObjectPtr<UNiagaraComponent> CenterVortexComponent;
+
+	UPROPERTY(Transient)
+	TArray<TObjectPtr<UNiagaraComponent>> BeatCrystalComponents;
+
+	float SlotPulseFlash[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+	float SlotBeatPulse[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+	int32 LastBeatStep = -1;
 
 	FLinearColor CurrentCoreColor = FLinearColor(0.35f, 0.8f, 1.0f, 1.0f);
 
