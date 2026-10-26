@@ -11,8 +11,6 @@ class UHarmonicConvergenceSynthComponent;
 class UNiagaraSystem;
 class UNiagaraComponent;
 
-
-
 // Event fired when an individual station button is pressed and begins playing its musical tone
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnStationVoiceStarted, FName, StationChannelName, float, NoteFrequencyHz);
 
@@ -21,6 +19,43 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnStationVoiceStopped, FName, Stati
 
 // Event fired during idle attract mode when a chime rings at a station to guide visitors
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnAttractPingTriggered, FName, StationChannelName, float, ChimeFrequencyHz);
+
+// Event fired when a station hold duration reaches threshold and activates a persistent rhythmic pulse beat
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_ThreeParams(FOnPersistentBeatActivated, FName, StationChannelName, int32, BeatStep, float, NoteFrequencyHz);
+
+// Event fired when a persistent rhythmic pulse beat finishes its lifespan and fades out
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnPersistentBeatDeactivated, int32, SlotIndex);
+
+// Persistent beat slot tracking struct
+USTRUCT(BlueprintType)
+struct FPersistentBeatSlotInfo
+{
+	GENERATED_BODY()
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Harmonics|Beat")
+	FName StationChannelName = NAME_None;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Harmonics|Beat")
+	int32 SlotIndex = 0;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Harmonics|Beat")
+	int32 AssignedBeatStep = 0;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Harmonics|Beat")
+	float BaseFrequencyHz = 130.81f;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Harmonics|Beat")
+	EVoiceTimbreProfile TimbreProfile = EVoiceTimbreProfile::SubBassPad;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Harmonics|Beat")
+	float PanPosition = 0.0f;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Harmonics|Beat")
+	float RemainingLifespan = 45.0f;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Harmonics|Beat")
+	bool bIsActive = false;
+};
 
 UCLASS(Blueprintable, BlueprintType)
 class THEPITPROJECT_API AHarmonicConvergenceAudioManager : public AActor
@@ -66,6 +101,15 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Harmonics|AttractMode")
 	float AttractChimeInterval = 4.0f;
 
+	// --- Persistent Rhythmic Beat Settings ---
+	// Hold duration required to activate a persistent looping beat slot (seconds)
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Harmonics|Beat", meta = (ClampMin = "0.5", ClampMax = "10.0"))
+	float HoldDurationToUnlockBeat = 1.75f;
+
+	// Total lifespan of a persistent looping beat after button release (seconds)
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Harmonics|Beat", meta = (ClampMin = "5.0", ClampMax = "300.0"))
+	float BeatLifespanSeconds = 45.0f;
+
 	// --- Delegates for Niagara/Visual synchronization ---
 
 	// Fired when an individual station button is pressed and begins sounding
@@ -79,6 +123,14 @@ public:
 	// Fired during idle attract mode when a chime rings at a station to invite visitors
 	UPROPERTY(BlueprintAssignable, Category = "Harmonics|Events")
 	FOnAttractPingTriggered OnAttractPingTriggered;
+
+	// Fired when a station hold duration reaches threshold and activates a persistent rhythmic pulse beat
+	UPROPERTY(BlueprintAssignable, Category = "Harmonics|Events")
+	FOnPersistentBeatActivated OnPersistentBeatActivated;
+
+	// Fired when a persistent rhythmic pulse beat finishes its lifespan and fades out
+	UPROPERTY(BlueprintAssignable, Category = "Harmonics|Events")
+	FOnPersistentBeatDeactivated OnPersistentBeatDeactivated;
 
 	// --- MetaSound & Musical Scale Control ---
 	UFUNCTION(BlueprintCallable, Category = "Harmonics|Control")
@@ -108,9 +160,18 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Harmonics|Query")
 	bool GetVoiceState(FName StationChannelName, FVoiceRuntimeState& OutState) const;
 
+	UFUNCTION(BlueprintPure, Category = "Harmonics|Beat")
+	const TArray<FPersistentBeatSlotInfo>& GetActiveBeatSlots() const { return PersistentBeatSlots; }
+
+	UFUNCTION(BlueprintCallable, Category = "Harmonics|Beat")
+	void ClearAllBeatSlots();
+
 protected:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Harmonics|Runtime")
 	TMap<FName, FVoiceRuntimeState> VoiceStates;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Harmonics|Runtime")
+	TArray<FPersistentBeatSlotInfo> PersistentBeatSlots;
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Harmonics|Runtime")
 	int32 ActiveVoiceCount = 0;
@@ -130,6 +191,7 @@ private:
 	void InitializeDefaultStations();
 	void ApplyHarmonicScaleFrequencies();
 	void UpdateConvergenceParameters(float DeltaTime);
+	void UpdateBeatSlots(float DeltaTime);
 	void UpdateAttractMode(float DeltaTime);
 	void PushMetaSoundParameters();
 	void UpdateNiagaraParameters(float DeltaTime);

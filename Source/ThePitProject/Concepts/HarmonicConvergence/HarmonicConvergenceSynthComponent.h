@@ -146,6 +146,31 @@ struct FConvergenceVoiceDSP
 	}
 };
 
+// Persistent Rhythmic Beat DSP Voice (Slot-based 4/4 quantized pulse)
+struct FRhythmicPulseDSP
+{
+	bool bIsActive = false;
+	int32 AssignedBeatStep = 0; // 0..3 (Downbeat, Offbeat 1, Backbeat, Offbeat 2)
+	float BaseFrequencyHz = 130.81f;
+	EVoiceTimbreProfile TimbreProfile = EVoiceTimbreProfile::SubBassPad;
+	float StereoPanPosition = 0.0f;
+	float SlotGain = 1.0f;
+
+	// DSP state
+	float Envelope = 0.0f;
+	float PhaseAngle = 0.0f;
+	float PitchDecay = 0.0f;
+
+	inline void Trigger()
+	{
+		Envelope = 1.0f;
+		PitchDecay = 1.0f;
+		PhaseAngle = 0.0f;
+	}
+
+	float GenerateSample(float SampleRate, float& OutLeftSample, float& OutRightSample);
+};
+
 UCLASS(ClassGroup = (Custom), meta = (BlueprintSpawnableComponent))
 class THEPITPROJECT_API UHarmonicConvergenceSynthComponent : public USynthComponent
 {
@@ -186,6 +211,22 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Harmonics|Synth")
 	void TriggerAttractPing(float ChimeFrequencyHz);
 
+	// --- Persistent Rhythmic Pulse Control ---
+	UFUNCTION(BlueprintCallable, Category = "Harmonics|Synth")
+	void SetRhythmicPulseSlot(int32 SlotIndex, bool bActive, int32 BeatStep = 0, float NoteFrequencyHz = 130.81f, float StereoPan = 0.0f, EVoiceTimbreProfile TimbreProfile = EVoiceTimbreProfile::SubBassPad, float Gain = 1.0f);
+
+	UFUNCTION(BlueprintCallable, Category = "Harmonics|Synth")
+	void ClearAllRhythmicPulseSlots();
+
+	UFUNCTION(BlueprintPure, Category = "Harmonics|Synth")
+	float GetMasterBPM() const { return MasterTempoBPM; }
+
+	UFUNCTION(BlueprintCallable, Category = "Harmonics|Synth")
+	void SetMasterBPM(float NewBPM) { MasterTempoBPM = FMath::Clamp(NewBPM, 40.0f, 200.0f); }
+
+	UFUNCTION(BlueprintPure, Category = "Harmonics|Synth")
+	int32 GetCurrentBeatStep() const { return CurrentBeatStep; }
+
 protected:
 	virtual bool Init(int32& SampleRate) override;
 	virtual int32 OnGenerateAudio(float* OutAudio, int32 NumSamples) override;
@@ -194,12 +235,19 @@ private:
 	static constexpr int32 MaxVoices = 24; // Full 20-station support + headroom
 	FConvergenceVoiceDSP Voices[MaxVoices];
 
+	// Persistent Rhythmic Beat DSP Slots (Max 4 simultaneous interlocking beats)
+	static constexpr int32 MaxRhythmicSlots = 4;
+	FRhythmicPulseDSP RhythmicSlots[MaxRhythmicSlots];
+
+	// Master Tempo Clock (Quantized 4/4 meter)
+	float MasterTempoBPM = 100.0f;
+	float BeatClockPhase = 0.0f;
+	int32 CurrentBeatStep = 0;
+
 	// Central Sub-Bass Drone (65.4 Hz C2)
 	float RootSubBassDronePhaseAngle = 0.0f;
 	float TargetConvergenceEnergy = 0.0f;
 	float CurrentConvergenceEnergy = 0.0f;
-
-
 
 	// Attract Chime State
 	float AttractChimeEnvelope = 0.0f;

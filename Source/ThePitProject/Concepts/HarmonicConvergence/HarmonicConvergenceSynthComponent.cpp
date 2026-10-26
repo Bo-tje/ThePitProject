@@ -118,6 +118,7 @@ float FConvergenceVoiceDSP::GenerateSample(float SampleRate, float& OutLeftSampl
 
 			const float OscillatorA = FMath::Sin(CarrierPhaseAngle) + FMath::Sin(CarrierPhaseAngle * 2.0f) * 0.18f;
 			const float OscillatorB = FMath::Sin(HarmonicPhaseAngle) + FMath::Sin(HarmonicPhaseAngle * 2.0f) * 0.18f;
+
 			// Harmonic Octave + Fifth Bloom as player holds button (HoldModulationIntensity 0 -> 1)
 			const float HarmonicBloom = (FMath::Sin(CarrierPhaseAngle * 2.0f) * 0.28f + FMath::Sin(HarmonicPhaseAngle * 3.0f) * 0.18f) * HoldModulationIntensity;
 			MonoVoiceSample = ((OscillatorA + OscillatorB) * 0.5f + HarmonicBloom) * AmplitudeEnvelope * 0.80f;
@@ -148,6 +149,87 @@ float FConvergenceVoiceDSP::GenerateSample(float SampleRate, float& OutLeftSampl
 	OutRightSample = MonoVoiceSample * FMath::Sin(PanAngle);
 
 	return MonoVoiceSample;
+}
+
+float FRhythmicPulseDSP::GenerateSample(float SampleRate, float& OutLeftSample, float& OutRightSample)
+{
+	if (Envelope <= 0.0001f)
+	{
+		OutLeftSample = 0.0f;
+		OutRightSample = 0.0f;
+		return 0.0f;
+	}
+
+	const float InvSampleRate = 1.0f / SampleRate;
+	float MonoSample = 0.0f;
+
+	switch (TimbreProfile)
+	{
+	case EVoiceTimbreProfile::SubBassPad:
+		{
+			// Heartbeat Sub-Kick: fast pitch dive (110Hz -> 50Hz) and punchy 180ms decay
+			Envelope = FMath::FInterpTo(Envelope, 0.0f, InvSampleRate, 5.5f);
+			PitchDecay = FMath::FInterpTo(PitchDecay, 0.0f, InvSampleRate, 26.0f);
+
+			const float KickFreqHz = 50.0f + 60.0f * PitchDecay;
+			PhaseAngle += (KickFreqHz * 2.0f * PI) * InvSampleRate;
+			if (PhaseAngle > 2.0f * PI) PhaseAngle -= 2.0f * PI;
+
+			const float SubSine = FMath::Sin(PhaseAngle);
+			const float SubHarmonic = FMath::Sin(PhaseAngle * 2.0f) * 0.15f;
+			MonoSample = (SubSine + SubHarmonic) * Envelope * SlotGain * 0.50f;
+		}
+		break;
+
+	case EVoiceTimbreProfile::CrystallineChime:
+		{
+			// Glass Ping / Crisp Clock Tick: high frequency chime with 80ms decay
+			Envelope = FMath::FInterpTo(Envelope, 0.0f, InvSampleRate, 12.0f);
+
+			PhaseAngle += (BaseFrequencyHz * 1.5f * 2.0f * PI) * InvSampleRate;
+			if (PhaseAngle > 2.0f * PI) PhaseAngle -= 2.0f * PI;
+
+			// Inharmonic metallic ring
+			const float ChimeSample = FMath::Sin(PhaseAngle) * 0.65f + FMath::Sin(PhaseAngle * 2.76f) * 0.25f + FMath::Sin(PhaseAngle * 5.4f) * 0.10f;
+			MonoSample = ChimeSample * Envelope * SlotGain * 0.28f;
+		}
+		break;
+
+	case EVoiceTimbreProfile::VortexSweep:
+		{
+			// Swirling Breath Pulse: gentle resonant swoosh with 200ms decay
+			Envelope = FMath::FInterpTo(Envelope, 0.0f, InvSampleRate, 5.0f);
+
+			PhaseAngle += (BaseFrequencyHz * 2.0f * PI) * InvSampleRate;
+			if (PhaseAngle > 2.0f * PI) PhaseAngle -= 2.0f * PI;
+
+			const float Swirl = FMath::Sin(PhaseAngle) * 0.7f + FMath::Sin(PhaseAngle * 1.5f) * 0.3f;
+			MonoSample = Swirl * Envelope * SlotGain * 0.32f;
+		}
+		break;
+
+	case EVoiceTimbreProfile::WarmPad:
+	default:
+		{
+			// Wooden Marimba / Kalimba Ping: warm organic click with 110ms decay
+			Envelope = FMath::FInterpTo(Envelope, 0.0f, InvSampleRate, 9.0f);
+
+			PhaseAngle += (BaseFrequencyHz * 2.0f * PI) * InvSampleRate;
+			if (PhaseAngle > 2.0f * PI) PhaseAngle -= 2.0f * PI;
+
+			// Warm wood resonance (fundamental + 3rd harmonic)
+			const float WoodSample = FMath::Sin(PhaseAngle) * 0.78f + FMath::Sin(PhaseAngle * 3.0f) * 0.22f;
+			MonoSample = WoodSample * Envelope * SlotGain * 0.35f;
+		}
+		break;
+	}
+
+	// Equal-power stereo spatial panning
+	const float PanAngle = (StereoPanPosition + 1.0f) * 0.25f * PI;
+	OutLeftSample = MonoSample * FMath::Cos(PanAngle);
+	OutRightSample = MonoSample * FMath::Sin(PanAngle);
+
+	return MonoSample;
 }
 
 UHarmonicConvergenceSynthComponent::UHarmonicConvergenceSynthComponent(const FObjectInitializer& ObjectInitializer)
@@ -203,13 +285,35 @@ void UHarmonicConvergenceSynthComponent::SetConvergenceEnergy(float Energy)
 	TargetConvergenceEnergy = Energy;
 }
 
-
-
 void UHarmonicConvergenceSynthComponent::TriggerAttractPing(float ChimeFrequencyHz)
 {
 	FScopeLock Lock(&AudioLock);
 	AttractChimeEnvelope = 1.0f;
 	AttractChimeFrequencyHz = ChimeFrequencyHz;
+}
+
+void UHarmonicConvergenceSynthComponent::SetRhythmicPulseSlot(int32 SlotIndex, bool bActive, int32 BeatStep, float NoteFrequencyHz, float StereoPan, EVoiceTimbreProfile TimbreProfile, float Gain)
+{
+	FScopeLock Lock(&AudioLock);
+	if (SlotIndex >= 0 && SlotIndex < MaxRhythmicSlots)
+	{
+		RhythmicSlots[SlotIndex].bIsActive = bActive;
+		RhythmicSlots[SlotIndex].AssignedBeatStep = FMath::Clamp(BeatStep, 0, 3);
+		RhythmicSlots[SlotIndex].BaseFrequencyHz = NoteFrequencyHz;
+		RhythmicSlots[SlotIndex].StereoPanPosition = FMath::Clamp(StereoPan, -1.0f, 1.0f);
+		RhythmicSlots[SlotIndex].TimbreProfile = TimbreProfile;
+		RhythmicSlots[SlotIndex].SlotGain = FMath::Clamp(Gain, 0.0f, 1.0f);
+	}
+}
+
+void UHarmonicConvergenceSynthComponent::ClearAllRhythmicPulseSlots()
+{
+	FScopeLock Lock(&AudioLock);
+	for (int32 SlotIndex = 0; SlotIndex < MaxRhythmicSlots; ++SlotIndex)
+	{
+		RhythmicSlots[SlotIndex].bIsActive = false;
+		RhythmicSlots[SlotIndex].Envelope = 0.0f;
+	}
 }
 
 int32 UHarmonicConvergenceSynthComponent::OnGenerateAudio(float* OutAudio, int32 NumSamples)
@@ -236,6 +340,23 @@ int32 UHarmonicConvergenceSynthComponent::OnGenerateAudio(float* OutAudio, int32
 	{
 		CurrentConvergenceEnergy = FMath::FInterpTo(CurrentConvergenceEnergy, TargetConvergenceEnergy, InvSampleRate, 3.5f);
 
+		// Advance Master Beat Clock (100 BPM 4/4 quantization)
+		const float BeatIncrement = (MasterTempoBPM / 60.0f) * InvSampleRate;
+		BeatClockPhase += BeatIncrement;
+		if (BeatClockPhase >= 1.0f)
+		{
+			BeatClockPhase -= 1.0f;
+			CurrentBeatStep = (CurrentBeatStep + 1) % 4;
+
+			for (int32 SlotIndex = 0; SlotIndex < MaxRhythmicSlots; ++SlotIndex)
+			{
+				if (RhythmicSlots[SlotIndex].bIsActive && RhythmicSlots[SlotIndex].AssignedBeatStep == CurrentBeatStep)
+				{
+					RhythmicSlots[SlotIndex].Trigger();
+				}
+			}
+		}
+
 		float AccumulatedLeftChannel = 0.0f;
 		float AccumulatedRightChannel = 0.0f;
 
@@ -258,7 +379,18 @@ int32 UHarmonicConvergenceSynthComponent::OnGenerateAudio(float* OutAudio, int32
 		AccumulatedLeftChannel += SubBassDroneSample;
 		AccumulatedRightChannel += SubBassDroneSample;
 
-
+		// 3. Persistent Rhythmic Beat Slots
+		for (int32 SlotIndex = 0; SlotIndex < MaxRhythmicSlots; ++SlotIndex)
+		{
+			if (RhythmicSlots[SlotIndex].Envelope > 0.0005f)
+			{
+				float PulseLeft = 0.0f;
+				float PulseRight = 0.0f;
+				RhythmicSlots[SlotIndex].GenerateSample(CurrentSampleRate, PulseLeft, PulseRight);
+				AccumulatedLeftChannel += PulseLeft;
+				AccumulatedRightChannel += PulseRight;
+			}
+		}
 
 		// 4. Ambient Attract Chime
 		if (AttractChimeEnvelope > 0.001f)

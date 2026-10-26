@@ -45,6 +45,17 @@ void AHarmonicConvergenceAudioManager::BeginPlay()
 	StationBeamComponents.Empty();
 	CenterVortexComponent = nullptr;
 
+	// Initialize the 4 persistent rhythmic pulse slots with interlocking 4/4 step assignment: {0, 2, 1, 3}
+	PersistentBeatSlots.SetNum(4);
+	const int32 BeatStepOrder[4] = { 0, 2, 1, 3 };
+	for (int32 SlotIdx = 0; SlotIdx < 4; ++SlotIdx)
+	{
+		PersistentBeatSlots[SlotIdx].SlotIndex = SlotIdx;
+		PersistentBeatSlots[SlotIdx].AssignedBeatStep = BeatStepOrder[SlotIdx];
+		PersistentBeatSlots[SlotIdx].bIsActive = false;
+		PersistentBeatSlots[SlotIdx].RemainingLifespan = BeatLifespanSeconds;
+	}
+
 	// Ensure any legacy attached Niagara components on child Blueprints are deactivated before spawning per-station components
 	TInlineComponentArray<UNiagaraComponent*> AttachedNiagaraComps(this);
 	for (UNiagaraComponent* Comp : AttachedNiagaraComps)
@@ -139,38 +150,55 @@ void AHarmonicConvergenceAudioManager::InitializeDefaultStations()
 	};
 
 	StationConfigs.Empty();
-	for (int32 i = 0; i < 20; ++i)
+	const FVector CenterLoc = GetActorLocation();
+
+	// Saxion Pit floor dimensions: 665.2cm (X) x 415.2cm (Y). Stations are positioned along the perimeter railing.
+	const float HalfW = 332.6f;
+	const float HalfH = 207.6f;
+
+	for (int32 Index = 0; Index < 20; ++Index)
 	{
 		FStationVoiceConfig Config;
-		Config.ChannelName = FName(StationTable[i].Name);
-		Config.TimbreProfile = StationTable[i].Timbre;
-		Config.StreamColor = StationTable[i].Color;
-		
-		// 360-degree perimeter circular panning around the pit railing
-		const float Angle = (i / 20.0f) * 2.0f * PI;
-		Config.PanPosition = FMath::Sin(Angle); // Smooth circular stereo pan
+		Config.ChannelName = FName(StationTable[Index].Name);
+		Config.BaseFrequencyHz = 261.63f; // Set dynamically by ApplyHarmonicScaleFrequencies
+		Config.TimbreProfile = StationTable[Index].Timbre;
+		Config.StreamColor = StationTable[Index].Color;
 
-		// Default Saxion Pit perimeter layout (6652mm x 4152mm = 665.2cm x 415.2cm rectangle: 6 stations per long side, 4 per short side)
-		constexpr float HalfLengthX = 332.6f;
-		constexpr float HalfWidthY = 207.6f;
-		FVector LocalOffset = FVector::ZeroVector;
-		if (i < 6) // Bottom long edge (-Y): 6 stations
+		float StationX = 0.0f;
+		float StationY = 0.0f;
+
+		// 20 stations distributed along the 4 edges of the Pit railing:
+		// South railing: 7 stations (Index 0 to 6)
+		if (Index < 7)
 		{
-			LocalOffset = FVector(FMath::Lerp(-HalfLengthX * 0.85f, HalfLengthX * 0.85f, i / 5.0f), -HalfWidthY, 0.0f);
+			const float Ratio = static_cast<float>(Index) / 6.0f;
+			StationX = FMath::Lerp(-HalfW, HalfW, Ratio);
+			StationY = -HalfH;
 		}
-		else if (i < 10) // Right short edge (+X): 4 stations
+		// East railing: 3 stations (Index 7 to 9)
+		else if (Index < 10)
 		{
-			LocalOffset = FVector(HalfLengthX, FMath::Lerp(-HalfWidthY * 0.75f, HalfWidthY * 0.75f, (i - 6) / 3.0f), 0.0f);
+			const float Ratio = static_cast<float>(Index - 6) / 4.0f;
+			StationX = HalfW;
+			StationY = FMath::Lerp(-HalfH, HalfH, Ratio);
 		}
-		else if (i < 16) // Top long edge (+Y): 6 stations
+		// North railing: 7 stations (Index 10 to 16)
+		else if (Index < 17)
 		{
-			LocalOffset = FVector(FMath::Lerp(HalfLengthX * 0.85f, -HalfLengthX * 0.85f, (i - 10) / 5.0f), HalfWidthY, 0.0f);
+			const float Ratio = static_cast<float>(Index - 10) / 6.0f;
+			StationX = FMath::Lerp(HalfW, -HalfW, Ratio);
+			StationY = HalfH;
 		}
-		else // Left short edge (-X): 4 stations
+		// West railing: 3 stations (Index 17 to 19)
+		else
 		{
-			LocalOffset = FVector(-HalfLengthX, FMath::Lerp(HalfWidthY * 0.75f, -HalfWidthY * 0.75f, (i - 16) / 3.0f), 0.0f);
+			const float Ratio = static_cast<float>(Index - 16) / 4.0f;
+			StationX = -HalfW;
+			StationY = FMath::Lerp(HalfH, -HalfH, Ratio);
 		}
-		Config.WorldStationLocation = GetActorLocation() + LocalOffset;
+
+		Config.WorldStationLocation = CenterLoc + FVector(StationX, StationY, 0.0f);
+		Config.PanPosition = FMath::Clamp(StationX / HalfW, -1.0f, 1.0f);
 
 		StationConfigs.Add(Config);
 	}
@@ -180,47 +208,34 @@ void AHarmonicConvergenceAudioManager::SetHarmonicScale(EHarmonicScaleMode NewSc
 {
 	ScaleMode = NewScaleMode;
 	ApplyHarmonicScaleFrequencies();
-
-	for (const FStationVoiceConfig& StationConfig : StationConfigs)
-	{
-		if (FVoiceRuntimeState* VoiceState = VoiceStates.Find(StationConfig.ChannelName))
-		{
-			VoiceState->CurrentFrequency = StationConfig.BaseFrequencyHz;
-		}
-	}
 }
 
 void AHarmonicConvergenceAudioManager::ApplyHarmonicScaleFrequencies()
 {
-	// 20-Note Open Harmonic Voicings across 5 octaves (Zero Clashing / Pure Consonance)
-	// Open Major Celestial (C2, G3, D4, G5, C3, E4, B5, G4, D6, G2, A4, E6, C5, D5, G6, G3, E5, C7, C4, G4)
-	static const float OpenMajorFreqs[20] = {
-		65.41f, 196.00f, 293.66f, 783.99f, 130.81f, 329.63f, 987.77f, 392.00f, 1174.66f, 97.99f,
-		440.00f, 1318.51f, 523.25f, 587.33f, 1567.98f, 196.00f, 659.25f, 2093.00f, 261.63f, 392.00f
+	// 20-Note Open Harmonic voicings across multiple octaves (C2 to C7)
+	const float OpenMajorFreqs[20] = {
+		65.41f, 196.00f, 293.66f, 783.99f, 130.81f, 329.63f, 987.77f, 392.00f, 1174.66f, 98.00f,
+		440.00f, 1318.51f, 523.25f, 587.33f, 1567.98f, 196.00f, 659.25f, 2093.00f, 261.63f, 1046.50f
 	};
 
-	// Open Lydian Dream
-	static const float OpenLydianFreqs[20] = {
-		65.41f, 196.00f, 293.66f, 783.99f, 130.81f, 369.99f, 987.77f, 392.00f, 1174.66f, 97.99f,
-		493.88f, 1318.51f, 587.33f, 739.99f, 1567.98f, 196.00f, 659.25f, 2093.00f, 261.63f, 369.99f
+	const float OpenLydianFreqs[20] = {
+		65.41f, 196.00f, 293.66f, 739.99f, 130.81f, 329.63f, 987.77f, 392.00f, 1174.66f, 98.00f,
+		440.00f, 1479.98f, 523.25f, 587.33f, 1760.00f, 196.00f, 659.25f, 2093.00f, 261.63f, 1046.50f
 	};
 
-	// Open Ambient Minor (Cm9 / Luminous Night)
-	static const float OpenMinorFreqs[20] = {
-		65.41f, 196.00f, 311.13f, 783.99f, 130.81f, 349.23f, 932.33f, 392.00f, 1174.66f, 97.99f,
-		466.16f, 1244.51f, 523.25f, 587.33f, 1567.98f, 196.00f, 622.25f, 2093.00f, 261.63f, 392.00f
+	const float OpenMinorFreqs[20] = {
+		65.41f, 196.00f, 311.13f, 783.99f, 130.81f, 349.23f, 932.33f, 392.00f, 1244.51f, 98.00f,
+		466.16f, 1396.91f, 523.25f, 622.25f, 1567.98f, 196.00f, 698.46f, 2093.00f, 261.63f, 1046.50f
 	};
 
-	// Open Hirajoshi Luminous
-	static const float OpenHirajoshiFreqs[20] = {
-		65.41f, 196.00f, 277.18f, 783.99f, 130.81f, 349.23f, 830.61f, 392.00f, 1046.50f, 97.99f,
-		415.30f, 1108.73f, 523.25f, 554.37f, 1567.98f, 196.00f, 698.46f, 2093.00f, 261.63f, 349.23f
+	const float OpenHirajoshiFreqs[20] = {
+		65.41f, 196.00f, 277.18f, 783.99f, 130.81f, 349.23f, 880.00f, 392.00f, 1108.73f, 98.00f,
+		415.30f, 1396.91f, 523.25f, 554.37f, 1567.98f, 196.00f, 698.46f, 2093.00f, 261.63f, 1046.50f
 	};
 
-	// Open Dorian Horizon
-	static const float OpenDorianFreqs[20] = {
-		65.41f, 196.00f, 293.66f, 783.99f, 130.81f, 349.23f, 880.00f, 392.00f, 1174.66f, 97.99f,
-		440.00f, 1318.51f, 523.25f, 587.33f, 1567.98f, 196.00f, 659.25f, 2093.00f, 261.63f, 440.00f
+	const float OpenDorianFreqs[20] = {
+		65.41f, 196.00f, 293.66f, 783.99f, 130.81f, 329.63f, 932.33f, 392.00f, 1174.66f, 98.00f,
+		440.00f, 1318.51f, 523.25f, 587.33f, 1567.98f, 196.00f, 659.25f, 2093.00f, 261.63f, 1046.50f
 	};
 
 	for (int32 StationIndex = 0; StationIndex < StationConfigs.Num(); ++StationIndex)
@@ -407,6 +422,7 @@ void AHarmonicConvergenceAudioManager::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
 	UpdateConvergenceParameters(DeltaTime);
+	UpdateBeatSlots(DeltaTime);
 	UpdateNiagaraParameters(DeltaTime);
 	UpdateAttractMode(DeltaTime);
 	PushMetaSoundParameters();
@@ -491,6 +507,77 @@ void AHarmonicConvergenceAudioManager::UpdateConvergenceParameters(float DeltaTi
 				{
 					ProceduralSynthComponent->SetVoiceModulation(StationIndex, VoiceState->ModulationIntensity);
 				}
+
+				// Check if hold duration qualifies for unlocking a persistent looping pulse beat
+				if (VoiceState->CurrentHoldDuration >= HoldDurationToUnlockBeat)
+				{
+					int32 ExistingSlotIdx = INDEX_NONE;
+					for (int32 SlotIdx = 0; SlotIdx < PersistentBeatSlots.Num(); ++SlotIdx)
+					{
+						if (PersistentBeatSlots[SlotIdx].bIsActive && PersistentBeatSlots[SlotIdx].StationChannelName == StationChannelName)
+						{
+							ExistingSlotIdx = SlotIdx;
+							break;
+						}
+					}
+
+					if (ExistingSlotIdx != INDEX_NONE)
+					{
+						// Still holding: keep beat lifespan replenished
+						PersistentBeatSlots[ExistingSlotIdx].RemainingLifespan = BeatLifespanSeconds;
+					}
+					else
+					{
+						// Find an open beat slot, or evict the one closest to expiry
+						int32 TargetSlotIdx = INDEX_NONE;
+						for (int32 SlotIdx = 0; SlotIdx < PersistentBeatSlots.Num(); ++SlotIdx)
+						{
+							if (!PersistentBeatSlots[SlotIdx].bIsActive)
+							{
+								TargetSlotIdx = SlotIdx;
+								break;
+							}
+						}
+
+						if (TargetSlotIdx == INDEX_NONE)
+						{
+							float LowestLifespan = TNumericLimits<float>::Max();
+							for (int32 SlotIdx = 0; SlotIdx < PersistentBeatSlots.Num(); ++SlotIdx)
+							{
+								if (PersistentBeatSlots[SlotIdx].RemainingLifespan < LowestLifespan)
+								{
+									LowestLifespan = PersistentBeatSlots[SlotIdx].RemainingLifespan;
+									TargetSlotIdx = SlotIdx;
+								}
+							}
+						}
+
+						if (TargetSlotIdx != INDEX_NONE)
+						{
+							FPersistentBeatSlotInfo& Slot = PersistentBeatSlots[TargetSlotIdx];
+							Slot.bIsActive = true;
+							Slot.StationChannelName = StationChannelName;
+							Slot.RemainingLifespan = BeatLifespanSeconds;
+							Slot.BaseFrequencyHz = StationConfigs[StationIndex].BaseFrequencyHz;
+							Slot.TimbreProfile = StationConfigs[StationIndex].TimbreProfile;
+							Slot.PanPosition = StationConfigs[StationIndex].PanPosition;
+
+							if (ProceduralSynthComponent)
+							{
+								ProceduralSynthComponent->SetRhythmicPulseSlot(
+									TargetSlotIdx,
+									true,
+									Slot.AssignedBeatStep,
+									Slot.BaseFrequencyHz,
+									Slot.PanPosition,
+									Slot.TimbreProfile,
+									1.0f);
+							}
+
+							OnPersistentBeatActivated.Broadcast(StationChannelName, Slot.AssignedBeatStep, Slot.BaseFrequencyHz);
+						}
+					}
+				}
 			}
 		}
 	}
@@ -507,6 +594,73 @@ void AHarmonicConvergenceAudioManager::UpdateConvergenceParameters(float DeltaTi
 	if (ProceduralSynthComponent)
 	{
 		ProceduralSynthComponent->SetConvergenceEnergy(ConvergenceEnergy);
+	}
+}
+
+void AHarmonicConvergenceAudioManager::UpdateBeatSlots(float DeltaTime)
+{
+	for (int32 SlotIdx = 0; SlotIdx < PersistentBeatSlots.Num(); ++SlotIdx)
+	{
+		FPersistentBeatSlotInfo& Slot = PersistentBeatSlots[SlotIdx];
+		if (!Slot.bIsActive)
+		{
+			continue;
+		}
+
+		// When the player releases the button, count down its persistent lifespan
+		bool bStationStillPressed = false;
+		if (const FVoiceRuntimeState* VoiceState = VoiceStates.Find(Slot.StationChannelName))
+		{
+			bStationStillPressed = VoiceState->bIsPressed;
+		}
+
+		if (!bStationStillPressed)
+		{
+			Slot.RemainingLifespan -= DeltaTime;
+			if (Slot.RemainingLifespan <= 0.0f)
+			{
+				Slot.bIsActive = false;
+				Slot.StationChannelName = NAME_None;
+				Slot.RemainingLifespan = 0.0f;
+
+				if (ProceduralSynthComponent)
+				{
+					ProceduralSynthComponent->SetRhythmicPulseSlot(SlotIdx, false);
+				}
+
+				OnPersistentBeatDeactivated.Broadcast(SlotIdx);
+				continue;
+			}
+		}
+
+		// Smooth natural fade out in the final 5 seconds of lifespan
+		const float FadeGain = (Slot.RemainingLifespan < 5.0f) ? FMath::Clamp(Slot.RemainingLifespan / 5.0f, 0.0f, 1.0f) : 1.0f;
+		if (ProceduralSynthComponent)
+		{
+			ProceduralSynthComponent->SetRhythmicPulseSlot(
+				SlotIdx,
+				true,
+				Slot.AssignedBeatStep,
+				Slot.BaseFrequencyHz,
+				Slot.PanPosition,
+				Slot.TimbreProfile,
+				FadeGain);
+		}
+	}
+}
+
+void AHarmonicConvergenceAudioManager::ClearAllBeatSlots()
+{
+	for (int32 SlotIdx = 0; SlotIdx < PersistentBeatSlots.Num(); ++SlotIdx)
+	{
+		PersistentBeatSlots[SlotIdx].bIsActive = false;
+		PersistentBeatSlots[SlotIdx].StationChannelName = NAME_None;
+		PersistentBeatSlots[SlotIdx].RemainingLifespan = BeatLifespanSeconds;
+	}
+
+	if (ProceduralSynthComponent)
+	{
+		ProceduralSynthComponent->ClearAllRhythmicPulseSlots();
 	}
 }
 
