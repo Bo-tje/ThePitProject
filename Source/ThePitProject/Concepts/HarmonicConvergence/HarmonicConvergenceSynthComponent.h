@@ -113,13 +113,13 @@ struct FAmbientDiffusionTank
 	}
 };
 
-// Multi-Tier Polyphonic Voice Engine
+// Particle Stream Voice Engine: Energy Capacitor Model (Tactile Pad Bite + Rising Charge Sweep)
 struct FConvergenceVoiceDSP
 {
 	float NoteFrequencyHz = 261.63f;
 	float CarrierPhaseAngle = 0.0f;
 	float HarmonicPhaseAngle = 0.0f;
-	float VibratoLfoPhaseAngle = 0.0f;
+	float FlutterPhaseAngle = 0.0f;
 	float HoldModulationIntensity = 0.0f;
 	float StereoPanPosition = 0.0f; // -1.0 Left to +1.0 Right
 	EVoiceTimbreProfile TimbreProfile = EVoiceTimbreProfile::WarmPad;
@@ -128,21 +128,34 @@ struct FConvergenceVoiceDSP
 	bool bIsVoiceActive = false;
 	float AmplitudeEnvelope = 0.0f;
 
-	// Tactile Note-On Strike Transient (Fast 12ms attack bite)
+	// Tactile Note-On Strike Transient (Crisp ~70ms drum-pad attack bite)
 	float TransientEnvelope = 0.0f;
 	float TransientPhaseAngle = 0.0f;
+
+	// Crystal Ignition Transient (Glass chime strike fired at 100% charge)
+	float IgnitionEnvelope = 0.0f;
+	float IgnitionPhaseAngle = 0.0f;
+	bool bHasFiredIgnition = false;
 
 	float GenerateSample(float SampleRate, float& OutLeftSample, float& OutRightSample);
 	void NoteOn(EVoiceTimbreProfile InTimbreProfile)
 	{
 		TimbreProfile = InTimbreProfile;
 		bIsVoiceActive = true;
-		TransientEnvelope = 1.0f; // Fire instant attack transient on every button press
+		TransientEnvelope = 1.0f; // Fire instant tactile bite
 		TransientPhaseAngle = 0.0f;
+		bHasFiredIgnition = false;
 	}
 	void NoteOff()
 	{
 		bIsVoiceActive = false;
+		bHasFiredIgnition = false;
+	}
+	void TriggerIgnition()
+	{
+		IgnitionEnvelope = 1.0f;
+		IgnitionPhaseAngle = 0.0f;
+		bHasFiredIgnition = true;
 	}
 };
 
@@ -150,7 +163,7 @@ struct FConvergenceVoiceDSP
 struct FRhythmicPulseDSP
 {
 	bool bIsActive = false;
-	int32 AssignedBeatStep = 0; // 0..3 (Downbeat, Offbeat 1, Backbeat, Offbeat 2)
+	int32 RhythmicPatternMask = 0x1111; // 16-bit pattern (bits 0..15 = 16th notes)
 	float BaseFrequencyHz = 130.81f;
 	EVoiceTimbreProfile TimbreProfile = EVoiceTimbreProfile::SubBassPad;
 	float StereoPanPosition = 0.0f;
@@ -211,9 +224,12 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Harmonics|Synth")
 	void TriggerAttractPing(float ChimeFrequencyHz);
 
+	UFUNCTION(BlueprintCallable, Category = "Harmonics|Synth")
+	void TriggerVoiceIgnition(int32 VoiceIndex);
+
 	// --- Persistent Rhythmic Pulse Control ---
 	UFUNCTION(BlueprintCallable, Category = "Harmonics|Synth")
-	void SetRhythmicPulseSlot(int32 SlotIndex, bool bActive, int32 BeatStep = 0, float NoteFrequencyHz = 130.81f, float StereoPan = 0.0f, EVoiceTimbreProfile TimbreProfile = EVoiceTimbreProfile::SubBassPad, float Gain = 1.0f);
+	void SetRhythmicPulseSlot(int32 SlotIndex, bool bActive, int32 RhythmicMask = 0x1111, float NoteFrequencyHz = 130.81f, float StereoPan = 0.0f, EVoiceTimbreProfile TimbreProfile = EVoiceTimbreProfile::SubBassPad, float Gain = 1.0f);
 
 	UFUNCTION(BlueprintCallable, Category = "Harmonics|Synth")
 	void ClearAllRhythmicPulseSlots();
@@ -235,8 +251,8 @@ private:
 	static constexpr int32 MaxVoices = 24; // Full 20-station support + headroom
 	FConvergenceVoiceDSP Voices[MaxVoices];
 
-	// Persistent Rhythmic Beat DSP Slots (Max 4 simultaneous interlocking beats)
-	static constexpr int32 MaxRhythmicSlots = 4;
+	// Persistent Rhythmic Beat DSP Slots (Full 20-station drum pad support + headroom)
+	static constexpr int32 MaxRhythmicSlots = 24;
 	FRhythmicPulseDSP RhythmicSlots[MaxRhythmicSlots];
 
 	// Master Tempo Clock (Quantized 4/4 meter)

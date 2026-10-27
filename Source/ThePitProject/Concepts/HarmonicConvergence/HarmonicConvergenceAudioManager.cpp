@@ -5,6 +5,8 @@
 #include "NiagaraComponent.h"
 #include "NiagaraFunctionLibrary.h"
 #include "NiagaraSystem.h"
+#include "Components/StaticMeshComponent.h"
+#include "Materials/MaterialInstanceDynamic.h"
 #include "UObject/ConstructorHelpers.h"
 
 AHarmonicConvergenceAudioManager::AHarmonicConvergenceAudioManager()
@@ -26,17 +28,35 @@ AHarmonicConvergenceAudioManager::AHarmonicConvergenceAudioManager()
 		StationBeamSystem = DefaultBeamSystem.Get();
 	}
 
-	static ConstructorHelpers::FObjectFinderOptional<UNiagaraSystem> DefaultCoreSystem(TEXT("/Game/HarmonicConvergence/NS_ConvergenceCore.NS_ConvergenceCore"));
-	if (DefaultCoreSystem.Succeeded())
-	{
-		CenterVortexSystem = DefaultCoreSystem.Get();
-	}
-
 	static ConstructorHelpers::FObjectFinderOptional<UNiagaraSystem> DefaultCrystalSystem(TEXT("/Game/HarmonicConvergence/NS_BeatCrystal.NS_BeatCrystal"));
 	if (DefaultCrystalSystem.Succeeded())
 	{
 		BeatCrystalSystem = DefaultCrystalSystem.Get();
 	}
+}
+
+int32 AHarmonicConvergenceAudioManager::GetStationSection(int32 StationIndex) const
+{
+	// Maps the 4 railing sides of the Saxion Pit to 4 Incredibox instrument families:
+	if (StationIndex < 7)  return 0; // South (Stations 0–6):  Beats / Sub-Bass (Beat 0)
+	if (StationIndex < 10) return 1; // East  (Stations 7–9):  Acoustic Percussion / Ticks (Beat 2)
+	if (StationIndex < 17) return 2; // North (Stations 10–16): Harmonic Warm Pads (Beat 1)
+	return 3;                        // West  (Stations 17–19): Melodic Leads / Chimes (Beat 3)
+}
+
+FVector AHarmonicConvergenceAudioManager::GetStationCrystalWorldLocation(int32 StationIndex) const
+{
+	const FVector CenterLoc = GetActorLocation();
+	if (!StationConfigs.IsValidIndex(StationIndex))
+	{
+		return CenterLoc;
+	}
+
+	// Calculate radial vector from center to the station on the floor XY plane
+	const FVector RadialDir = (StationConfigs[StationIndex].WorldStationLocation - CenterLoc).GetSafeNormal2D();
+	FVector CrystalPos = CenterLoc + RadialDir * CentralCrystalRingRadius;
+	CrystalPos.Z = CenterLoc.Z;
+	return CrystalPos;
 }
 
 void AHarmonicConvergenceAudioManager::BeginPlay()
@@ -49,20 +69,38 @@ void AHarmonicConvergenceAudioManager::BeginPlay()
 
 	VoiceStates.Empty();
 	StationBeamComponents.Empty();
-	CenterVortexComponent = nullptr;
 
-	// Initialize the 4 persistent rhythmic pulse slots with interlocking 4/4 step assignment: {0, 2, 1, 3}
-	PersistentBeatSlots.SetNum(4);
-	const int32 BeatStepOrder[4] = { 0, 2, 1, 3 };
-	for (int32 SlotIdx = 0; SlotIdx < 4; ++SlotIdx)
+	// Initialize 20 dedicated Persistent Beat Slots (one for each station / drum pad)
+	PersistentBeatSlots.SetNum(StationConfigs.Num());
+	for (int32 StationIdx = 0; StationIdx < StationConfigs.Num(); ++StationIdx)
 	{
-		PersistentBeatSlots[SlotIdx].SlotIndex = SlotIdx;
-		PersistentBeatSlots[SlotIdx].AssignedBeatStep = BeatStepOrder[SlotIdx];
-		PersistentBeatSlots[SlotIdx].bIsActive = false;
-		PersistentBeatSlots[SlotIdx].RemainingLifespan = BeatLifespanSeconds;
+		PersistentBeatSlots[StationIdx].SlotIndex = StationIdx;
+		PersistentBeatSlots[StationIdx].RhythmicPatternMask = StationConfigs[StationIdx].RhythmicPatternMask;
+		PersistentBeatSlots[StationIdx].bIsActive = false;
+		PersistentBeatSlots[StationIdx].StationIndex = StationIdx;
+		PersistentBeatSlots[StationIdx].RemainingLifespan = BeatLifespanSeconds;
 	}
 
-	// Ensure any legacy attached Niagara components on child Blueprints are deactivated before spawning per-station components
+	// Initialize Stem Audio Components for optional pre-rendered WAV SoundWave stems
+	StationStemAudioComponents.SetNum(StationConfigs.Num());
+	for (int32 StationIdx = 0; StationIdx < StationConfigs.Num(); ++StationIdx)
+	{
+		StationStemAudioComponents[StationIdx] = nullptr;
+		if (StationConfigs[StationIdx].AudioStemAsset)
+		{
+			UAudioComponent* StemComp = NewObject<UAudioComponent>(this);
+			StemComp->SetSound(StationConfigs[StationIdx].AudioStemAsset);
+			StemComp->bAutoActivate = false;
+			StemComp->bIsUISound = false;
+			StemComp->SetVolumeMultiplier(0.0f);
+			StemComp->AttachToComponent(RootComponent, FAttachmentTransformRules::KeepRelativeTransform);
+			StemComp->RegisterComponent();
+			StemComp->Play();
+			StationStemAudioComponents[StationIdx] = StemComp;
+		}
+	}
+
+	// Ensure any legacy attached Niagara components on child Blueprints are deactivated
 	TInlineComponentArray<UNiagaraComponent*> AttachedNiagaraComps(this);
 	for (UNiagaraComponent* Comp : AttachedNiagaraComps)
 	{
@@ -75,32 +113,66 @@ void AHarmonicConvergenceAudioManager::BeginPlay()
 
 	const FVector CenterLoc = GetActorLocation();
 
-	// 1. Spawn Central Vortex
-	if (CenterVortexSystem)
-	{
-		CenterVortexComponent = UNiagaraFunctionLibrary::SpawnSystemAtLocation(
-			GetWorld(), CenterVortexSystem, CenterLoc, FRotator::ZeroRotator, FVector(1.0f), false, true);
-	}
+	// 1. Spawn the 20 Crystal Shards forming the Central Circular Core (Always in the center, replacing the vortex)
+	StationCrystalComponents.SetNum(StationConfigs.Num());
+	StationCrystalMeshComponents.SetNum(StationConfigs.Num());
+	StationCrystalDynamicMaterials.SetNum(StationConfigs.Num());
 
-	// 2. Pre-spawn 4 Persistent Beat Crystal Components (one per rhythmic slot)
-	BeatCrystalComponents.SetNum(4);
-	for (int32 SlotIdx = 0; SlotIdx < 4; ++SlotIdx)
+	for (int32 StationIdx = 0; StationIdx < StationConfigs.Num(); ++StationIdx)
 	{
-		BeatCrystalComponents[SlotIdx] = nullptr;
+		StationCrystalComponents[StationIdx] = nullptr;
+		StationCrystalMeshComponents[StationIdx] = nullptr;
+		StationCrystalDynamicMaterials[StationIdx] = nullptr;
+		StationPulseFlash[StationIdx] = 0.0f;
+		StationBeatPulse[StationIdx] = 0.0f;
+		StationChargeProgress[StationIdx] = 0.0f;
+
+		const FVector CrystalWorldLoc = GetStationCrystalWorldLocation(StationIdx);
+		const FVector RadialDir = (StationConfigs[StationIdx].WorldStationLocation - CenterLoc).GetSafeNormal2D();
+		FRotator CrystalRot = RadialDir.Rotation();
+		CrystalRot.Pitch = 12.0f; // Upright with slight outward flare
+
+		// Optional Physical Static Mesh support for future custom 3D crystal assets
+		if (CrystalMeshAsset)
+		{
+			UStaticMeshComponent* MeshComp = NewObject<UStaticMeshComponent>(this);
+			MeshComp->SetStaticMesh(CrystalMeshAsset);
+			MeshComp->SetWorldLocationAndRotation(CrystalWorldLoc, CrystalRot);
+			MeshComp->SetWorldScale3D(CrystalMeshScale);
+			MeshComp->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+			MeshComp->AttachToComponent(RootComponent, FAttachmentTransformRules::KeepWorldTransform);
+			MeshComp->RegisterComponent();
+
+			if (CrystalBaseMaterial)
+			{
+				UMaterialInstanceDynamic* DynMat = UMaterialInstanceDynamic::Create(CrystalBaseMaterial, this);
+				DynMat->SetVectorParameterValue(TEXT("EmissiveColor"), StationConfigs[StationIdx].StreamColor);
+				DynMat->SetScalarParameterValue(TEXT("Brightness"), 0.15f);
+				MeshComp->SetMaterial(0, DynMat);
+				StationCrystalDynamicMaterials[StationIdx] = DynMat;
+			}
+			StationCrystalMeshComponents[StationIdx] = MeshComp;
+		}
+
+		// Niagara Crystal Core & Floor Pulse Ring Emitter
 		if (BeatCrystalSystem)
 		{
 			if (UNiagaraComponent* CrystalComp = UNiagaraFunctionLibrary::SpawnSystemAtLocation(
-				GetWorld(), BeatCrystalSystem, CenterLoc, FRotator::ZeroRotator, FVector(1.0f), false, false))
+				GetWorld(), BeatCrystalSystem, CrystalWorldLoc, CrystalRot, FVector(1.0f), false, true))
 			{
-				CrystalComp->Deactivate();
-				BeatCrystalComponents[SlotIdx] = CrystalComp;
+				CrystalComp->SetVariableLinearColor(FName(TEXT("User.CrystalColor")), StationConfigs[StationIdx].StreamColor);
+				CrystalComp->SetVariableFloat(FName(TEXT("User.LifespanRatio")), 0.15f); // Serene dormant ambient quartz glow
+				CrystalComp->SetVariableFloat(FName(TEXT("User.PulseFlash")), 0.0f);
+				CrystalComp->SetVariableFloat(FName(TEXT("User.BeatPulse")), 0.0f);
+				StationCrystalComponents[StationIdx] = CrystalComp;
 			}
 		}
 	}
 
-	// 3. Spawn per-station Beam Systems
-	for (const FStationVoiceConfig& Config : StationConfigs)
+	// 2. Spawn per-station Beam Systems aimed directly at their corresponding crystal in the core
+	for (int32 StationIdx = 0; StationIdx < StationConfigs.Num(); ++StationIdx)
 	{
+		const FStationVoiceConfig& Config = StationConfigs[StationIdx];
 		FVoiceRuntimeState State;
 		State.CurrentFrequency = Config.BaseFrequencyHz;
 		VoiceStates.Add(Config.ChannelName, State);
@@ -110,7 +182,8 @@ void AHarmonicConvergenceAudioManager::BeginPlay()
 			if (UNiagaraComponent* BeamComp = UNiagaraFunctionLibrary::SpawnSystemAtLocation(
 				GetWorld(), StationBeamSystem, CenterLoc, FRotator::ZeroRotator, FVector(1.0f), false, false))
 			{
-				BeamComp->SetVariableVec3(FName(TEXT("User.CenterLocation")), CenterLoc);
+				const FVector CrystalTargetLoc = GetStationCrystalWorldLocation(StationIdx);
+				BeamComp->SetVariableVec3(FName(TEXT("User.CenterLocation")), CrystalTargetLoc);
 				BeamComp->SetVariableVec3(FName(TEXT("User.BeamStartLocation")), Config.WorldStationLocation);
 				BeamComp->SetVariableLinearColor(FName(TEXT("User.BeamColor")), Config.StreamColor);
 				StationBeamComponents.Add(Config.ChannelName, BeamComp);
@@ -150,29 +223,37 @@ void AHarmonicConvergenceAudioManager::InitializeDefaultStations()
 		const TCHAR* Name;
 		EVoiceTimbreProfile Timbre;
 		FLinearColor Color;
+		int32 PatternMask; // 16-step rhythmic pattern bitmask (bits 0..15 corresponding to 16th-note steps in the 4/4 bar)
 	};
 
 	const FStationInitData StationTable[20] = {
-		{ TEXT("player1"),  EVoiceTimbreProfile::SubBassPad,        FLinearColor(0.0f, 0.9f, 1.0f) }, // Cyan (C2 Sub)
-		{ TEXT("player2"),  EVoiceTimbreProfile::WarmPad,           FLinearColor(1.0f, 0.5f, 0.0f) }, // Amber (G3)
-		{ TEXT("player3"),  EVoiceTimbreProfile::WarmPad,           FLinearColor(1.0f, 0.0f, 0.8f) }, // Magenta (D4)
-		{ TEXT("player4"),  EVoiceTimbreProfile::CrystallineChime,  FLinearColor(0.1f, 1.0f, 0.4f) }, // Emerald (G5 Chime)
-		{ TEXT("player5"),  EVoiceTimbreProfile::SubBassPad,        FLinearColor(0.0f, 0.6f, 1.0f) }, // Azure (C3)
-		{ TEXT("player6"),  EVoiceTimbreProfile::WarmPad,           FLinearColor(1.0f, 0.8f, 0.0f) }, // Gold (E4)
-		{ TEXT("player7"),  EVoiceTimbreProfile::CrystallineChime,  FLinearColor(0.7f, 0.2f, 1.0f) }, // Violet (B5 Chime)
-		{ TEXT("player8"),  EVoiceTimbreProfile::WarmPad,           FLinearColor(0.2f, 0.9f, 0.8f) }, // Turquoise (G4)
-		{ TEXT("player9"),  EVoiceTimbreProfile::CrystallineChime,  FLinearColor(1.0f, 0.4f, 0.6f) }, // Rose (D6 Chime)
-		{ TEXT("player10"), EVoiceTimbreProfile::SubBassPad,        FLinearColor(0.3f, 0.0f, 0.9f) }, // Deep Indigo (G2 Sub)
-		{ TEXT("player11"), EVoiceTimbreProfile::WarmPad,           FLinearColor(0.9f, 0.9f, 0.2f) }, // Sunbeam (A4)
-		{ TEXT("player12"), EVoiceTimbreProfile::CrystallineChime,  FLinearColor(0.2f, 1.0f, 0.7f) }, // Mint (E6 Chime)
-		{ TEXT("player13"), EVoiceTimbreProfile::WarmPad,           FLinearColor(1.0f, 0.2f, 0.2f) }, // Crimson (C5)
-		{ TEXT("player14"), EVoiceTimbreProfile::WarmPad,           FLinearColor(1.0f, 0.6f, 0.3f) }, // Coral (D5)
-		{ TEXT("player15"), EVoiceTimbreProfile::CrystallineChime,  FLinearColor(0.5f, 0.9f, 1.0f) }, // Ice Blue (G6 Chime)
-		{ TEXT("player16"), EVoiceTimbreProfile::SubBassPad,        FLinearColor(0.8f, 0.5f, 0.0f) }, // Bronze (G3 Bass)
-		{ TEXT("player17"), EVoiceTimbreProfile::WarmPad,           FLinearColor(0.9f, 0.1f, 0.6f) }, // Orchid (E5)
-		{ TEXT("player18"), EVoiceTimbreProfile::CrystallineChime,  FLinearColor(1.0f, 1.0f, 1.0f) }, // Starlight White (C7 Chime)
-		{ TEXT("player19"), EVoiceTimbreProfile::WarmPad,           FLinearColor(0.1f, 0.7f, 1.0f) }, // Sky Blue (C4)
-		{ TEXT("player20"), EVoiceTimbreProfile::VortexSweep,       FLinearColor(0.8f, 0.0f, 1.0f) }  // Celestial Purple (Vortex)
+		// South Railing (Stations 0–6): Beats / Sub-Bass
+		{ TEXT("player1"),  EVoiceTimbreProfile::SubBassPad,        FLinearColor(0.0f, 0.9f, 1.0f), 0x1111 }, // Four-on-the-floor Kick (steps 0, 4, 8, 12)
+		{ TEXT("player2"),  EVoiceTimbreProfile::SubBassPad,        FLinearColor(0.0f, 0.6f, 1.0f), 0x0449 }, // Breakbeat / Funk Kick (steps 0, 3, 6, 10)
+		{ TEXT("player3"),  EVoiceTimbreProfile::SubBassPad,        FLinearColor(0.1f, 0.4f, 1.0f), 0x0101 }, // 808 Sub Drop (steps 0, 8)
+		{ TEXT("player4"),  EVoiceTimbreProfile::SubBassPad,        FLinearColor(0.0f, 0.8f, 0.9f), 0x4444 }, // Offbeat Bouncy Sub (steps 2, 6, 10, 14)
+		{ TEXT("player5"),  EVoiceTimbreProfile::SubBassPad,        FLinearColor(0.2f, 0.5f, 1.0f), 0x0481 }, // Hip-Hop Kick (steps 0, 7, 10)
+		{ TEXT("player6"),  EVoiceTimbreProfile::SubBassPad,        FLinearColor(0.0f, 1.0f, 0.8f), 0x2041 }, // UK Garage Skip Kick (steps 0, 6, 13)
+		{ TEXT("player7"),  EVoiceTimbreProfile::SubBassPad,        FLinearColor(0.3f, 0.2f, 0.9f), 0x0905 }, // Driving Double-Tap Sub (steps 0, 2, 8, 11)
+
+		// East Railing (Stations 7–9): Acoustic Percussion / Snare / Shaker
+		{ TEXT("player8"),  EVoiceTimbreProfile::CrystallineChime,  FLinearColor(1.0f, 0.6f, 0.0f), 0x1010 }, // Snare / Clap Backbeat (steps 4, 12)
+		{ TEXT("player9"),  EVoiceTimbreProfile::CrystallineChime,  FLinearColor(0.9f, 0.8f, 0.1f), 0x5555 }, // Rolling 8th-Note Hi-Hats (steps 0, 2, 4, 6, 8, 10, 12, 14)
+		{ TEXT("player10"), EVoiceTimbreProfile::CrystallineChime,  FLinearColor(1.0f, 0.45f, 0.1f), 0xAAAA }, // Shaker 16th Syncopation (steps 1, 3, 5, 7, 9, 11, 13, 15)
+
+		// North Railing (Stations 10–16): Harmonic Warm Pads / Chords
+		{ TEXT("player11"), EVoiceTimbreProfile::WarmPad,           FLinearColor(0.9f, 0.1f, 0.5f), 0x4444 }, // Offbeat Reggae/Funk Chords (steps 2, 6, 10, 14)
+		{ TEXT("player12"), EVoiceTimbreProfile::WarmPad,           FLinearColor(1.0f, 0.2f, 0.3f), 0x0001 }, // Ambient Swell Bed (step 0)
+		{ TEXT("player13"), EVoiceTimbreProfile::WarmPad,           FLinearColor(0.8f, 0.1f, 0.8f), 0x4108 }, // Neo-Soul Chord Stabs (steps 3, 8, 14)
+		{ TEXT("player14"), EVoiceTimbreProfile::WarmPad,           FLinearColor(0.6f, 0.1f, 0.9f), 0x0410 }, // Rhythmic Fifth Swell (steps 4, 10)
+		{ TEXT("player15"), EVoiceTimbreProfile::WarmPad,           FLinearColor(1.0f, 0.3f, 0.6f), 0x1084 }, // Warm Staccato Rhythm (steps 2, 7, 12)
+		{ TEXT("player16"), EVoiceTimbreProfile::WarmPad,           FLinearColor(0.7f, 0.2f, 0.7f), 0x4040 }, // High Voice Shimmer (steps 6, 14)
+		{ TEXT("player17"), EVoiceTimbreProfile::WarmPad,           FLinearColor(0.9f, 0.4f, 0.2f), 0x0101 }, // Root Bed Anchor (steps 0, 8)
+
+		// West Railing (Stations 17–19): Melodic Leads & Crystalline Chimes
+		{ TEXT("player18"), EVoiceTimbreProfile::VortexSweep,       FLinearColor(0.1f, 1.0f, 0.4f), 0x0A28 }, // Funky Melodic Lead (steps 3, 5, 9, 11)
+		{ TEXT("player19"), EVoiceTimbreProfile::CrystallineChime,  FLinearColor(0.3f, 1.0f, 0.7f), 0x2492 }, // Glass Kalimba Arpeggio (steps 1, 4, 7, 10, 13)
+		{ TEXT("player20"), EVoiceTimbreProfile::VortexSweep,       FLinearColor(1.0f, 1.0f, 1.0f), 0xD000 }  // Turnaround Swoosh Flourish (steps 12, 14, 15)
 	};
 
 	StationConfigs.Empty();
@@ -189,6 +270,7 @@ void AHarmonicConvergenceAudioManager::InitializeDefaultStations()
 		Config.BaseFrequencyHz = 261.63f; // Set dynamically by ApplyHarmonicScaleFrequencies
 		Config.TimbreProfile = StationTable[Index].Timbre;
 		Config.StreamColor = StationTable[Index].Color;
+		Config.RhythmicPatternMask = StationTable[Index].PatternMask;
 
 		float StationX = 0.0f;
 		float StationY = 0.0f;
@@ -344,7 +426,7 @@ void AHarmonicConvergenceAudioManager::TriggerStationNoteOn(FName StationChannel
 			ProceduralSynthComponent->NoteOn(FoundVoiceIndex, VoiceState->CurrentFrequency, StationVoicePan, StationTimbre);
 		}
 
-		// 2. Activate per-station Niagara beam component directly in C++
+		// 2. Activate per-station Niagara beam component aimed directly at its crystal in the core
 		if (TObjectPtr<UNiagaraComponent>* BeamCompPtr = StationBeamComponents.Find(StationChannelName))
 		{
 			if (UNiagaraComponent* BeamComp = BeamCompPtr->Get())
@@ -352,7 +434,8 @@ void AHarmonicConvergenceAudioManager::TriggerStationNoteOn(FName StationChannel
 				BeamComp->Activate(true);
 				if (FoundVoiceIndex != INDEX_NONE)
 				{
-					BeamComp->SetVariableVec3(FName(TEXT("User.CenterLocation")), GetActorLocation());
+					const FVector CrystalTargetLoc = GetStationCrystalWorldLocation(FoundVoiceIndex);
+					BeamComp->SetVariableVec3(FName(TEXT("User.CenterLocation")), CrystalTargetLoc);
 					BeamComp->SetVariableVec3(FName(TEXT("User.BeamStartLocation")), StationConfigs[FoundVoiceIndex].WorldStationLocation);
 					BeamComp->SetVariableLinearColor(FName(TEXT("User.BeamColor")), StationConfigs[FoundVoiceIndex].StreamColor);
 				}
@@ -393,13 +476,16 @@ void AHarmonicConvergenceAudioManager::TriggerStationNoteOff(FName StationChanne
 			VoiceState->ModulationIntensity = 0.0f;
 			VoiceState->CurrentPressure = 0.0f;
 
+			// If released before reaching full activation, the crystal will smoothly decay back to dormant
+			// (Handled automatically in UpdateConvergenceParameters)
+
 			// 1. Direct Pure C++ Procedural Synth Trigger
 			if (ProceduralSynthComponent && FoundVoiceIndex != INDEX_NONE)
 			{
 				ProceduralSynthComponent->NoteOff(FoundVoiceIndex);
 			}
 
-			// 2. Deactivate per-station Niagara beam component directly in C++
+			// 2. Deactivate per-station Niagara beam component
 			if (TObjectPtr<UNiagaraComponent>* BeamCompPtr = StationBeamComponents.Find(StationChannelName))
 			{
 				if (UNiagaraComponent* BeamComp = BeamCompPtr->Get())
@@ -447,29 +533,67 @@ bool AHarmonicConvergenceAudioManager::GetStationConfig(FName StationChannelName
 void AHarmonicConvergenceAudioManager::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
+
+	// Decay pulse flashes and floor shockwave pulses back to zero every frame
+	for (int32 StIdx = 0; StIdx < StationConfigs.Num(); ++StIdx)
+	{
+		if (StationPulseFlash[StIdx] > 0.001f)
+		{
+			StationPulseFlash[StIdx] = FMath::FInterpTo(StationPulseFlash[StIdx], 0.0f, DeltaTime, 10.0f);
+			if (StationCrystalComponents.IsValidIndex(StIdx) && StationCrystalComponents[StIdx])
+			{
+				StationCrystalComponents[StIdx]->SetVariableFloat(FName(TEXT("User.PulseFlash")), StationPulseFlash[StIdx]);
+			}
+			if (StationCrystalDynamicMaterials.IsValidIndex(StIdx) && StationCrystalDynamicMaterials[StIdx])
+			{
+				StationCrystalDynamicMaterials[StIdx]->SetScalarParameterValue(TEXT("PulseFlash"), StationPulseFlash[StIdx]);
+			}
+		}
+
+		if (StationBeatPulse[StIdx] > 0.001f)
+		{
+			StationBeatPulse[StIdx] = FMath::FInterpTo(StationBeatPulse[StIdx], 0.0f, DeltaTime, 12.0f);
+			if (StationCrystalComponents.IsValidIndex(StIdx) && StationCrystalComponents[StIdx])
+			{
+				StationCrystalComponents[StIdx]->SetVariableFloat(FName(TEXT("User.BeatPulse")), StationBeatPulse[StIdx]);
+			}
+		}
+	}
+
 	UpdateConvergenceParameters(DeltaTime);
 	UpdateBeatSlots(DeltaTime);
 	UpdateNiagaraParameters(DeltaTime);
 	UpdateAttractMode(DeltaTime);
 	PushMetaSoundParameters();
 
-	// Master Beat Synchronization: trigger visual flash and floor pulse rings on the exact frame audio beats hit
+	// Master 16-Step Beat Synchronization: pulse crystals whose pattern contains the current 16th-note step
 	if (ProceduralSynthComponent)
 	{
 		const int32 CurrentStep = ProceduralSynthComponent->GetCurrentBeatStep();
 		if (CurrentStep != LastBeatStep)
 		{
 			LastBeatStep = CurrentStep;
+			const int32 StepBit = (1 << CurrentStep);
+
 			for (int32 SlotIdx = 0; SlotIdx < PersistentBeatSlots.Num(); ++SlotIdx)
 			{
-				if (PersistentBeatSlots[SlotIdx].bIsActive && PersistentBeatSlots[SlotIdx].AssignedBeatStep == CurrentStep)
+				const FPersistentBeatSlotInfo& Slot = PersistentBeatSlots[SlotIdx];
+				if (Slot.bIsActive && StationConfigs.IsValidIndex(Slot.StationIndex))
 				{
-					SlotPulseFlash[SlotIdx] = 1.0f;
-					SlotBeatPulse[SlotIdx] = 1.0f;
-					if (BeatCrystalComponents.IsValidIndex(SlotIdx) && BeatCrystalComponents[SlotIdx])
+					const int32 StIdx = Slot.StationIndex;
+					if (Slot.RhythmicPatternMask & StepBit)
 					{
-						BeatCrystalComponents[SlotIdx]->SetVariableFloat(FName(TEXT("User.PulseFlash")), 1.0f);
-						BeatCrystalComponents[SlotIdx]->SetVariableFloat(FName(TEXT("User.BeatPulse")), 1.0f);
+						StationPulseFlash[StIdx] = 1.0f;
+						StationBeatPulse[StIdx] = 1.0f;
+						if (StationCrystalComponents.IsValidIndex(StIdx) && StationCrystalComponents[StIdx])
+						{
+							StationCrystalComponents[StIdx]->SetVariableFloat(FName(TEXT("User.PulseFlash")), 1.0f);
+							StationCrystalComponents[StIdx]->SetVariableFloat(FName(TEXT("User.BeatPulse")), 1.0f);
+						}
+					if (StationCrystalDynamicMaterials.IsValidIndex(StIdx) && StationCrystalDynamicMaterials[StIdx])
+					{
+						StationCrystalDynamicMaterials[StIdx]->SetScalarParameterValue(TEXT("PulseFlash"), 1.0f);
+					}
 					}
 				}
 			}
@@ -498,38 +622,6 @@ void AHarmonicConvergenceAudioManager::UpdateNiagaraParameters(float DeltaTime)
 			}
 		}
 	}
-
-	if (CenterVortexComponent)
-	{
-		FLinearColor TargetCoreColor(0.35f, 0.8f, 1.0f, 1.0f);
-		if (ActiveVoiceCount > 0)
-		{
-			FLinearColor ColorSum(0.0f, 0.0f, 0.0f, 0.0f);
-			int32 ActiveColorCount = 0;
-			for (const FStationVoiceConfig& Config : StationConfigs)
-			{
-				if (const FVoiceRuntimeState* VoiceState = VoiceStates.Find(Config.ChannelName))
-				{
-					if (VoiceState->bIsPressed)
-					{
-						ColorSum += Config.StreamColor;
-						ActiveColorCount++;
-					}
-				}
-			}
-			if (ActiveColorCount > 0)
-			{
-				TargetCoreColor = ColorSum / static_cast<float>(ActiveColorCount);
-				TargetCoreColor.A = 1.0f;
-			}
-		}
-
-		CurrentCoreColor = FMath::CInterpTo(CurrentCoreColor, TargetCoreColor, DeltaTime, 5.0f);
-		CenterVortexComponent->SetVariableFloat(FName(TEXT("User.ConvergenceEnergy")), ConvergenceEnergy);
-		CenterVortexComponent->SetVariableInt(FName(TEXT("User.ActiveStationCount")), ActiveVoiceCount);
-		CenterVortexComponent->SetVariableFloat(FName(TEXT("User.CoreBrightness")), CoreBrightness);
-		CenterVortexComponent->SetVariableLinearColor(FName(TEXT("User.CoreColor")), CurrentCoreColor);
-	}
 }
 
 void AHarmonicConvergenceAudioManager::UpdateConvergenceParameters(float DeltaTime)
@@ -547,9 +639,24 @@ void AHarmonicConvergenceAudioManager::UpdateConvergenceParameters(float DeltaTi
 				ActiveVoiceCount++;
 				VoiceState->CurrentHoldDuration += DeltaTime;
 
-				// Dynamic timbre modulation builds over 4 seconds of holding, scaled by analog pressure
-				const float HoldProgressRatio = FMath::Clamp(VoiceState->CurrentHoldDuration / 4.0f, 0.0f, 1.0f);
-				VoiceState->ModulationIntensity = FMath::Max(HoldProgressRatio, VoiceState->CurrentPressure * 0.5f);
+				// Charging the crystal: ChargeProgress builds from 0.0 to 1.0 over HoldDurationToUnlockBeat
+				StationChargeProgress[StationIndex] = FMath::Clamp(VoiceState->CurrentHoldDuration / HoldDurationToUnlockBeat, 0.0f, 1.0f);
+
+				// Visual brightness scales up from dormant quartz (0.15) to brilliant radiant active (1.0)
+				const float DynamicBrightness = FMath::Lerp(0.15f, 1.0f, StationChargeProgress[StationIndex]);
+				if (StationCrystalComponents.IsValidIndex(StationIndex) && StationCrystalComponents[StationIndex])
+				{
+					StationCrystalComponents[StationIndex]->SetVariableFloat(FName(TEXT("User.LifespanRatio")), DynamicBrightness);
+					// Charging crackle shimmer
+					StationCrystalComponents[StationIndex]->SetVariableFloat(FName(TEXT("User.PulseFlash")), StationChargeProgress[StationIndex] * 0.35f);
+				}
+				if (StationCrystalDynamicMaterials.IsValidIndex(StationIndex) && StationCrystalDynamicMaterials[StationIndex])
+				{
+					StationCrystalDynamicMaterials[StationIndex]->SetScalarParameterValue(TEXT("Brightness"), DynamicBrightness);
+				}
+
+				// Audibly swells louder, opens low-pass filter and blooms harmonics as energy pours into the crystal
+				VoiceState->ModulationIntensity = StationChargeProgress[StationIndex];
 				TotalModulationIntensityAccumulator += VoiceState->ModulationIntensity;
 
 				if (ProceduralSynthComponent)
@@ -557,91 +664,97 @@ void AHarmonicConvergenceAudioManager::UpdateConvergenceParameters(float DeltaTi
 					ProceduralSynthComponent->SetVoiceModulation(StationIndex, VoiceState->ModulationIntensity);
 				}
 
-				// Check if hold duration qualifies for unlocking a persistent looping pulse beat
+				// Check if crystal is fully charged to activate and lock in persistent beat looper (Drum Pad Mode)
 				if (VoiceState->CurrentHoldDuration >= HoldDurationToUnlockBeat)
 				{
-					int32 ExistingSlotIdx = INDEX_NONE;
-					for (int32 SlotIdx = 0; SlotIdx < PersistentBeatSlots.Num(); ++SlotIdx)
+					const int32 SlotIdx = StationIndex;
+					if (PersistentBeatSlots.IsValidIndex(SlotIdx))
 					{
-						if (PersistentBeatSlots[SlotIdx].bIsActive && PersistentBeatSlots[SlotIdx].StationChannelName == StationChannelName)
-						{
-							ExistingSlotIdx = SlotIdx;
-							break;
-						}
-					}
+						FPersistentBeatSlotInfo& Slot = PersistentBeatSlots[SlotIdx];
 
-					if (ExistingSlotIdx != INDEX_NONE)
-					{
-						// Still holding: keep beat lifespan replenished
-						PersistentBeatSlots[ExistingSlotIdx].RemainingLifespan = BeatLifespanSeconds;
-					}
-					else
-					{
-						// Find an open beat slot, or evict the one closest to expiry
-						int32 TargetSlotIdx = INDEX_NONE;
-						for (int32 SlotIdx = 0; SlotIdx < PersistentBeatSlots.Num(); ++SlotIdx)
+						if (Slot.bIsActive)
 						{
-							if (!PersistentBeatSlots[SlotIdx].bIsActive)
-							{
-								TargetSlotIdx = SlotIdx;
-								break;
-							}
-						}
-
-						if (TargetSlotIdx == INDEX_NONE)
-						{
-							float LowestLifespan = TNumericLimits<float>::Max();
-							for (int32 SlotIdx = 0; SlotIdx < PersistentBeatSlots.Num(); ++SlotIdx)
-							{
-								if (PersistentBeatSlots[SlotIdx].RemainingLifespan < LowestLifespan)
-								{
-									LowestLifespan = PersistentBeatSlots[SlotIdx].RemainingLifespan;
-									TargetSlotIdx = SlotIdx;
-								}
-							}
-						}
-
-						if (TargetSlotIdx != INDEX_NONE)
-						{
-							FPersistentBeatSlotInfo& Slot = PersistentBeatSlots[TargetSlotIdx];
-							Slot.bIsActive = true;
-							Slot.StationChannelName = StationChannelName;
+							// Still holding: keep beat lifespan topped up
 							Slot.RemainingLifespan = BeatLifespanSeconds;
-							Slot.BaseFrequencyHz = StationConfigs[StationIndex].BaseFrequencyHz;
-							Slot.TimbreProfile = StationConfigs[StationIndex].TimbreProfile;
-							Slot.PanPosition = StationConfigs[StationIndex].PanPosition;
-
-							if (ProceduralSynthComponent)
-							{
-								ProceduralSynthComponent->SetRhythmicPulseSlot(
-									TargetSlotIdx,
-									true,
-									Slot.AssignedBeatStep,
-									Slot.BaseFrequencyHz,
-									Slot.PanPosition,
-									Slot.TimbreProfile,
-									1.0f);
-							}
-
-							// Position the visual light crystal 50% along the radial path to the center on the projection floor
-							const FVector WorldStationLoc = StationConfigs[StationIndex].WorldStationLocation;
-							const FVector CenterLoc = GetActorLocation();
-							FVector CrystalPos = FMath::Lerp(WorldStationLoc, CenterLoc, 0.50f);
-							CrystalPos.Z = CenterLoc.Z;
-
-							if (BeatCrystalComponents.IsValidIndex(TargetSlotIdx) && BeatCrystalComponents[TargetSlotIdx])
-							{
-								UNiagaraComponent* CrystalComp = BeatCrystalComponents[TargetSlotIdx];
-								CrystalComp->SetWorldLocation(CrystalPos);
-								CrystalComp->SetVariableLinearColor(FName(TEXT("User.CrystalColor")), StationConfigs[StationIndex].StreamColor);
-								CrystalComp->SetVariableFloat(FName(TEXT("User.PulseFlash")), 1.0f);
-								CrystalComp->SetVariableFloat(FName(TEXT("User.BeatPulse")), 1.0f);
-								CrystalComp->SetVariableFloat(FName(TEXT("User.LifespanRatio")), 1.0f);
-								CrystalComp->Activate(true);
-							}
-
-							OnPersistentBeatActivated.Broadcast(StationChannelName, Slot.AssignedBeatStep, Slot.BaseFrequencyHz);
 						}
+						else
+						{
+							// Count active crystals against MaxActiveCrystals
+							int32 CurrentlyActiveCrystals = 0;
+							for (const FPersistentBeatSlotInfo& S : PersistentBeatSlots)
+							{
+								if (S.bIsActive) CurrentlyActiveCrystals++;
+							}
+
+							if (CurrentlyActiveCrystals < MaxActiveCrystals)
+							{
+								Slot.bIsActive = true;
+								Slot.StationChannelName = StationChannelName;
+								Slot.StationIndex = StationIndex;
+								Slot.RemainingLifespan = BeatLifespanSeconds;
+								Slot.BaseFrequencyHz = StationConfigs[StationIndex].BaseFrequencyHz;
+								Slot.TimbreProfile = StationConfigs[StationIndex].TimbreProfile;
+								Slot.PanPosition = StationConfigs[StationIndex].PanPosition;
+								Slot.RhythmicPatternMask = StationConfigs[StationIndex].RhythmicPatternMask;
+
+								// If this station has an AudioStemAsset assigned, stem audio component handles audio;
+								// otherwise, procedural 16-step synth slot is activated
+								const bool bHasAudioStem = StationConfigs[StationIndex].AudioStemAsset != nullptr;
+								if (ProceduralSynthComponent && !bHasAudioStem)
+								{
+									ProceduralSynthComponent->SetRhythmicPulseSlot(
+										SlotIdx,
+										true,
+										Slot.RhythmicPatternMask,
+										Slot.BaseFrequencyHz,
+										Slot.PanPosition,
+										Slot.TimbreProfile,
+										1.0f);
+								}
+
+								// Audio ignition sound on the charging beam
+								if (ProceduralSynthComponent)
+								{
+									ProceduralSynthComponent->TriggerVoiceIgnition(StationIndex);
+								}
+
+								// Crystal Ignition Flash!
+								StationPulseFlash[StationIndex] = 1.0f;
+								StationBeatPulse[StationIndex] = 1.0f;
+								if (StationCrystalComponents.IsValidIndex(StationIndex) && StationCrystalComponents[StationIndex])
+								{
+									StationCrystalComponents[StationIndex]->SetVariableFloat(FName(TEXT("User.PulseFlash")), 1.0f);
+									StationCrystalComponents[StationIndex]->SetVariableFloat(FName(TEXT("User.BeatPulse")), 1.0f);
+								}
+								if (StationCrystalDynamicMaterials.IsValidIndex(StationIndex) && StationCrystalDynamicMaterials[StationIndex])
+								{
+									StationCrystalDynamicMaterials[StationIndex]->SetScalarParameterValue(TEXT("PulseFlash"), 1.0f);
+								}
+
+								OnPersistentBeatActivated.Broadcast(StationChannelName, Slot.RhythmicPatternMask, Slot.BaseFrequencyHz);
+							}
+						}
+					}
+				}
+			}
+			else
+			{
+				// Station button is NOT pressed:
+				// If this station is NOT currently an active looper, decay its charge back to dormant quartz
+				const bool bIsActiveLooper = PersistentBeatSlots.IsValidIndex(StationIndex) &&
+				                             PersistentBeatSlots[StationIndex].bIsActive;
+
+				if (!bIsActiveLooper && StationChargeProgress[StationIndex] > 0.001f)
+				{
+					StationChargeProgress[StationIndex] = FMath::FInterpTo(StationChargeProgress[StationIndex], 0.0f, DeltaTime, 4.0f);
+					const float DecayBrightness = FMath::Lerp(0.15f, 1.0f, StationChargeProgress[StationIndex]);
+					if (StationCrystalComponents.IsValidIndex(StationIndex) && StationCrystalComponents[StationIndex])
+					{
+						StationCrystalComponents[StationIndex]->SetVariableFloat(FName(TEXT("User.LifespanRatio")), DecayBrightness);
+					}
+					if (StationCrystalDynamicMaterials.IsValidIndex(StationIndex) && StationCrystalDynamicMaterials[StationIndex])
+					{
+						StationCrystalDynamicMaterials[StationIndex]->SetScalarParameterValue(TEXT("Brightness"), DecayBrightness);
 					}
 				}
 			}
@@ -649,7 +762,6 @@ void AHarmonicConvergenceAudioManager::UpdateConvergenceParameters(float DeltaTi
 	}
 
 	const int32 TotalConfiguredStations = FMath::Max(1, StationConfigs.Num());
-	// Exponential perceived energy curve: 1 player gives gentle energy, 4+ players give massive crescendo
 	const float ActiveStationRatio = (ActiveVoiceCount > 0) ? (ActiveVoiceCount / static_cast<float>(TotalConfiguredStations)) : 0.0f;
 	const float BaseConvergenceCurve = FMath::Pow(ActiveStationRatio, 1.35f) * 2.0f;
 	const float TargetConvergenceEnergy = BaseConvergenceCurve * (1.0f + 0.35f * TotalModulationIntensityAccumulator);
@@ -668,12 +780,23 @@ void AHarmonicConvergenceAudioManager::UpdateBeatSlots(float DeltaTime)
 	for (int32 SlotIdx = 0; SlotIdx < PersistentBeatSlots.Num(); ++SlotIdx)
 	{
 		FPersistentBeatSlotInfo& Slot = PersistentBeatSlots[SlotIdx];
-		if (!Slot.bIsActive)
+		const int32 StIdx = Slot.StationIndex;
+		const bool bValidStation = StationConfigs.IsValidIndex(StIdx);
+
+		if (!Slot.bIsActive || !bValidStation)
 		{
+			// Smoothly fade out stem audio component if not active
+			if (StationStemAudioComponents.IsValidIndex(SlotIdx) && StationStemAudioComponents[SlotIdx])
+			{
+				const float CurrentVol = StationStemAudioComponents[SlotIdx]->VolumeMultiplier;
+				if (CurrentVol > 0.001f)
+				{
+					StationStemAudioComponents[SlotIdx]->SetVolumeMultiplier(FMath::FInterpTo(CurrentVol, 0.0f, DeltaTime, 6.0f));
+				}
+			}
 			continue;
 		}
 
-		// When the player releases the button, count down its persistent lifespan
 		bool bStationStillPressed = false;
 		if (const FVoiceRuntimeState* VoiceState = VoiceStates.Find(Slot.StationChannelName))
 		{
@@ -684,19 +807,31 @@ void AHarmonicConvergenceAudioManager::UpdateBeatSlots(float DeltaTime)
 		{
 			Slot.RemainingLifespan -= DeltaTime;
 			if (Slot.RemainingLifespan <= 0.0f)
-			{
+		{
 				Slot.bIsActive = false;
 				Slot.StationChannelName = NAME_None;
 				Slot.RemainingLifespan = 0.0f;
+				StationChargeProgress[StIdx] = 0.0f;
 
 				if (ProceduralSynthComponent)
 				{
 					ProceduralSynthComponent->SetRhythmicPulseSlot(SlotIdx, false);
 				}
 
-				if (BeatCrystalComponents.IsValidIndex(SlotIdx) && BeatCrystalComponents[SlotIdx])
+				if (StationStemAudioComponents.IsValidIndex(SlotIdx) && StationStemAudioComponents[SlotIdx])
 				{
-					BeatCrystalComponents[SlotIdx]->Deactivate();
+					StationStemAudioComponents[SlotIdx]->SetVolumeMultiplier(0.0f);
+				}
+
+				if (StationCrystalComponents.IsValidIndex(StIdx) && StationCrystalComponents[StIdx])
+				{
+					StationCrystalComponents[StIdx]->SetVariableFloat(FName(TEXT("User.LifespanRatio")), 0.15f);
+					StationCrystalComponents[StIdx]->SetVariableFloat(FName(TEXT("User.PulseFlash")), 0.0f);
+				}
+				if (StationCrystalDynamicMaterials.IsValidIndex(StIdx) && StationCrystalDynamicMaterials[StIdx])
+				{
+					StationCrystalDynamicMaterials[StIdx]->SetScalarParameterValue(TEXT("Brightness"), 0.15f);
+					StationCrystalDynamicMaterials[StIdx]->SetScalarParameterValue(TEXT("PulseFlash"), 0.0f);
 				}
 
 				OnPersistentBeatDeactivated.Broadcast(SlotIdx);
@@ -704,30 +839,45 @@ void AHarmonicConvergenceAudioManager::UpdateBeatSlots(float DeltaTime)
 			}
 		}
 
-		// Smooth natural fade out in the final 5 seconds of lifespan
-		const float FadeGain = (Slot.RemainingLifespan < 5.0f) ? FMath::Clamp(Slot.RemainingLifespan / 5.0f, 0.0f, 1.0f) : 1.0f;
-		if (ProceduralSynthComponent)
+		// Visual Battery Meter: continuously dims from 1.0 (radiant active) down to 0.15 (dormant quartz) as power drains
+		const float LifespanFraction = (BeatLifespanSeconds > 0.0f) ? FMath::Clamp(Slot.RemainingLifespan / BeatLifespanSeconds, 0.0f, 1.0f) : 0.0f;
+		const float VisualGlow = FMath::Lerp(0.15f, 1.0f, FMath::Pow(LifespanFraction, 0.75f));
+
+		// Audio fade out in the final 6 seconds of lifespan
+		const float AudioFadeWindow = 6.0f;
+		const float AudioFadeAlpha = (Slot.RemainingLifespan < AudioFadeWindow) ? FMath::Clamp(Slot.RemainingLifespan / AudioFadeWindow, 0.0f, 1.0f) : 1.0f;
+
+		// Synchronized Stem volume interpolation
+		if (StationStemAudioComponents.IsValidIndex(SlotIdx) && StationStemAudioComponents[SlotIdx])
+		{
+			const float CurrentVol = StationStemAudioComponents[SlotIdx]->VolumeMultiplier;
+			StationStemAudioComponents[SlotIdx]->SetVolumeMultiplier(FMath::FInterpTo(CurrentVol, AudioFadeAlpha, DeltaTime, 8.0f));
+		}
+
+		if (!bStationStillPressed)
+		{
+			if (StationCrystalComponents.IsValidIndex(StIdx) && StationCrystalComponents[StIdx])
+			{
+				StationCrystalComponents[StIdx]->SetVariableFloat(FName(TEXT("User.LifespanRatio")), VisualGlow);
+			}
+			if (StationCrystalDynamicMaterials.IsValidIndex(StIdx) && StationCrystalDynamicMaterials[StIdx])
+			{
+				StationCrystalDynamicMaterials[StIdx]->SetScalarParameterValue(TEXT("Brightness"), VisualGlow);
+			}
+		}
+
+		// Update procedural volume scaling if using procedural synth
+		const bool bHasAudioStem = StationConfigs[StIdx].AudioStemAsset != nullptr;
+		if (ProceduralSynthComponent && !bHasAudioStem)
 		{
 			ProceduralSynthComponent->SetRhythmicPulseSlot(
 				SlotIdx,
 				true,
-				Slot.AssignedBeatStep,
+				Slot.RhythmicPatternMask,
 				Slot.BaseFrequencyHz,
 				Slot.PanPosition,
 				Slot.TimbreProfile,
-				FadeGain);
-		}
-
-		// Decay visual pulse flash and expanding beat ring parameters
-		SlotPulseFlash[SlotIdx] = FMath::FInterpTo(SlotPulseFlash[SlotIdx], 0.0f, DeltaTime, 9.0f);
-		SlotBeatPulse[SlotIdx] = FMath::FInterpConstantTo(SlotBeatPulse[SlotIdx], 0.0f, DeltaTime, 1.4f);
-
-		if (BeatCrystalComponents.IsValidIndex(SlotIdx) && BeatCrystalComponents[SlotIdx])
-		{
-			UNiagaraComponent* CrystalComp = BeatCrystalComponents[SlotIdx];
-			CrystalComp->SetVariableFloat(FName(TEXT("User.PulseFlash")), SlotPulseFlash[SlotIdx]);
-			CrystalComp->SetVariableFloat(FName(TEXT("User.BeatPulse")), SlotBeatPulse[SlotIdx]);
-			CrystalComp->SetVariableFloat(FName(TEXT("User.LifespanRatio")), FadeGain);
+				AudioFadeAlpha);
 		}
 	}
 }
@@ -738,7 +888,13 @@ void AHarmonicConvergenceAudioManager::ClearAllBeatSlots()
 	{
 		PersistentBeatSlots[SlotIdx].bIsActive = false;
 		PersistentBeatSlots[SlotIdx].StationChannelName = NAME_None;
+		PersistentBeatSlots[SlotIdx].StationIndex = INDEX_NONE;
 		PersistentBeatSlots[SlotIdx].RemainingLifespan = BeatLifespanSeconds;
+
+		if (StationStemAudioComponents.IsValidIndex(SlotIdx) && StationStemAudioComponents[SlotIdx])
+		{
+			StationStemAudioComponents[SlotIdx]->SetVolumeMultiplier(0.0f);
+		}
 	}
 
 	if (ProceduralSynthComponent)
@@ -746,11 +902,21 @@ void AHarmonicConvergenceAudioManager::ClearAllBeatSlots()
 		ProceduralSynthComponent->ClearAllRhythmicPulseSlots();
 	}
 
-	for (UNiagaraComponent* Comp : BeatCrystalComponents)
+	for (int32 StIdx = 0; StIdx < StationCrystalComponents.Num(); ++StIdx)
 	{
-		if (Comp)
+		StationPulseFlash[StIdx] = 0.0f;
+		StationBeatPulse[StIdx] = 0.0f;
+		StationChargeProgress[StIdx] = 0.0f;
+		if (StationCrystalComponents[StIdx])
 		{
-			Comp->Deactivate();
+			StationCrystalComponents[StIdx]->SetVariableFloat(FName(TEXT("User.LifespanRatio")), 0.15f);
+			StationCrystalComponents[StIdx]->SetVariableFloat(FName(TEXT("User.PulseFlash")), 0.0f);
+			StationCrystalComponents[StIdx]->SetVariableFloat(FName(TEXT("User.BeatPulse")), 0.0f);
+		}
+		if (StationCrystalDynamicMaterials.IsValidIndex(StIdx) && StationCrystalDynamicMaterials[StIdx])
+		{
+			StationCrystalDynamicMaterials[StIdx]->SetScalarParameterValue(TEXT("Brightness"), 0.15f);
+			StationCrystalDynamicMaterials[StIdx]->SetScalarParameterValue(TEXT("PulseFlash"), 0.0f);
 		}
 	}
 }
@@ -762,14 +928,27 @@ void AHarmonicConvergenceAudioManager::UpdateAttractMode(float DeltaTime)
 		return;
 	}
 
-	if (ActiveVoiceCount == 0)
+	// Check if any crystals are currently active and looping
+	bool bAnyActiveCrystals = false;
+	for (const FPersistentBeatSlotInfo& Slot : PersistentBeatSlots)
+	{
+		if (Slot.bIsActive)
+		{
+			bAnyActiveCrystals = true;
+			break;
+		}
+	}
+
+	// Attract mode should ONLY run when installation is completely idle:
+	// No buttons are pressed AND no crystals are active
+	if (ActiveVoiceCount == 0 && !bAnyActiveCrystals)
 	{
 		InactivityDurationSeconds += DeltaTime;
 		if (InactivityDurationSeconds >= AttractIdleThreshold)
 		{
 			TimeSinceLastAttractChimeSeconds += DeltaTime;
 			if (TimeSinceLastAttractChimeSeconds >= AttractChimeInterval)
-			{
+		{
 				TimeSinceLastAttractChimeSeconds = 0.0f;
 				if (StationConfigs.Num() > 0)
 				{
@@ -780,6 +959,13 @@ void AHarmonicConvergenceAudioManager::UpdateAttractMode(float DeltaTime)
 					if (ProceduralSynthComponent)
 					{
 						ProceduralSynthComponent->TriggerAttractPing(ChimeFrequencyHz);
+					}
+
+					// Attract ping briefly glints the station's crystal in the core
+					StationPulseFlash[RandomStationIndex] = 0.8f;
+					if (StationCrystalComponents.IsValidIndex(RandomStationIndex) && StationCrystalComponents[RandomStationIndex])
+					{
+						StationCrystalComponents[RandomStationIndex]->SetVariableFloat(FName(TEXT("User.PulseFlash")), 0.8f);
 					}
 
 					OnAttractPingTriggered.Broadcast(StationChannelName, ChimeFrequencyHz);
@@ -795,6 +981,7 @@ void AHarmonicConvergenceAudioManager::UpdateAttractMode(float DeltaTime)
 	}
 	else
 	{
+		// Installation is actively engaged: reset inactivity timer
 		InactivityDurationSeconds = 0.0f;
 		TimeSinceLastAttractChimeSeconds = 0.0f;
 	}

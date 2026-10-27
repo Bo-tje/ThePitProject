@@ -10,6 +10,10 @@ class UInputManagerSubSystem;
 class UHarmonicConvergenceSynthComponent;
 class UNiagaraSystem;
 class UNiagaraComponent;
+class UStaticMesh;
+class UStaticMeshComponent;
+class UMaterialInterface;
+class UMaterialInstanceDynamic;
 
 // Event fired when an individual station button is pressed and begins playing its musical tone
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnStationVoiceStarted, FName, StationChannelName, float, NoteFrequencyHz);
@@ -26,7 +30,7 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_ThreeParams(FOnPersistentBeatActivated, FName
 // Event fired when a persistent rhythmic pulse beat finishes its lifespan and fades out
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnPersistentBeatDeactivated, int32, SlotIndex);
 
-// Persistent beat slot tracking struct
+// Persistent beat slot tracking struct (4 section slots: 0=Bass, 1=Percussion, 2=Harmony, 3=Melody)
 USTRUCT(BlueprintType)
 struct FPersistentBeatSlotInfo
 {
@@ -36,10 +40,13 @@ struct FPersistentBeatSlotInfo
 	FName StationChannelName = NAME_None;
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Harmonics|Beat")
+	int32 StationIndex = INDEX_NONE;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Harmonics|Beat")
 	int32 SlotIndex = 0;
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Harmonics|Beat")
-	int32 AssignedBeatStep = 0;
+	int32 RhythmicPatternMask = 0x1111;
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Harmonics|Beat")
 	float BaseFrequencyHz = 130.81f;
@@ -75,17 +82,29 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Harmonics|Setup")
 	TArray<FStationVoiceConfig> StationConfigs;
 
-	// Niagara system spawned per station to fire beams from WorldStationLocation toward CenterLocation
+	// Niagara system spawned per station to fire beams from WorldStationLocation toward its central crystal
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Harmonics|Setup")
 	TObjectPtr<UNiagaraSystem> StationBeamSystem;
 
-	// Central vortex Niagara system spawned at the manager's CenterLocation
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Harmonics|Setup")
-	TObjectPtr<UNiagaraSystem> CenterVortexSystem;
-
-	// Niagara system for the persistent beat light crystals and floor pulse rings
+	// Niagara system for the 20 crystals forming the central core ring
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Harmonics|Setup")
 	TObjectPtr<UNiagaraSystem> BeatCrystalSystem;
+
+	// Optional Static Mesh asset to represent the physical crystal shards in the center (when 3D assets are provided)
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Harmonics|Setup")
+	TObjectPtr<UStaticMesh> CrystalMeshAsset;
+
+	// Optional Material for the crystal static meshes (dynamic material instances created automatically)
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Harmonics|Setup")
+	TObjectPtr<UMaterialInterface> CrystalBaseMaterial;
+
+	// Scale factor for the central crystal static meshes
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Harmonics|Setup")
+	FVector CrystalMeshScale = FVector(0.35f, 0.35f, 0.75f);
+
+	// Radius of the central crystal core ring in centimeters (e.g. 85cm)
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Harmonics|Setup")
+	float CentralCrystalRingRadius = 85.0f;
 
 	// Pure C++ Procedural Synth Component (Zero MetaSound Nodes Required)
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Harmonics|Audio")
@@ -106,9 +125,13 @@ public:
 	float AttractChimeInterval = 4.0f;
 
 	// --- Persistent Rhythmic Beat Settings ---
-	// Hold duration required to activate a persistent looping beat slot (seconds)
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Harmonics|Beat", meta = (ClampMin = "0.5", ClampMax = "10.0"))
-	float HoldDurationToUnlockBeat = 1.75f;
+	// Hold duration required to power up and lock in a persistent looping beat slot (seconds, 0.75s default for snappy drum pad feel)
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Harmonics|Beat", meta = (ClampMin = "0.1", ClampMax = "10.0"))
+	float HoldDurationToUnlockBeat = 0.75f;
+
+	// Maximum number of crystals that can be simultaneously active and looping (1..20, default 20 for full drum pad capability)
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Harmonics|Beat", meta = (ClampMin = "1", ClampMax = "20"))
+	int32 MaxActiveCrystals = 20;
 
 	// Total lifespan of a persistent looping beat after button release (seconds)
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Harmonics|Beat", meta = (ClampMin = "5.0", ClampMax = "300.0"))
@@ -170,6 +193,14 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Harmonics|Beat")
 	void ClearAllBeatSlots();
 
+	// Maps station index (0..19) to one of the 4 instrument families: 0=Bass, 1=Percussion, 2=Harmony, 3=Melody
+	UFUNCTION(BlueprintPure, Category = "Harmonics|Beat")
+	int32 GetStationSection(int32 StationIndex) const;
+
+	// Calculates the 3D world location of a station's crystal shard in the central ring
+	UFUNCTION(BlueprintPure, Category = "Harmonics|Beat")
+	FVector GetStationCrystalWorldLocation(int32 StationIndex) const;
+
 protected:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Harmonics|Runtime")
 	TMap<FName, FVoiceRuntimeState> VoiceStates;
@@ -212,17 +243,25 @@ private:
 	UPROPERTY(Transient)
 	TMap<FName, TObjectPtr<UNiagaraComponent>> StationBeamComponents;
 
+	// Per-station crystal shard Niagara components in the central circular core
 	UPROPERTY(Transient)
-	TObjectPtr<UNiagaraComponent> CenterVortexComponent;
+	TArray<TObjectPtr<UNiagaraComponent>> StationCrystalComponents;
+
+	// Optional physical crystal StaticMesh components
+	UPROPERTY(Transient)
+	TArray<TObjectPtr<UStaticMeshComponent>> StationCrystalMeshComponents;
 
 	UPROPERTY(Transient)
-	TArray<TObjectPtr<UNiagaraComponent>> BeatCrystalComponents;
+	TArray<TObjectPtr<UMaterialInstanceDynamic>> StationCrystalDynamicMaterials;
 
-	float SlotPulseFlash[4] = {0.0f, 0.0f, 0.0f, 0.0f};
-	float SlotBeatPulse[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+	// Synchronized audio components for optional pre-rendered WAV SoundWave stems
+	UPROPERTY(Transient)
+	TArray<TObjectPtr<UAudioComponent>> StationStemAudioComponents;
+
+	float StationPulseFlash[20] = {0.0f};
+	float StationBeatPulse[20] = {0.0f};
+	float StationChargeProgress[20] = {0.0f};
 	int32 LastBeatStep = -1;
-
-	FLinearColor CurrentCoreColor = FLinearColor(0.35f, 0.8f, 1.0f, 1.0f);
 
 	UPROPERTY()
 	TWeakObjectPtr<UInputManagerSubSystem> InputSubsystem;

@@ -2,145 +2,74 @@
 
 float FConvergenceVoiceDSP::GenerateSample(float SampleRate, float& OutLeftSample, float& OutRightSample)
 {
-	if (AmplitudeEnvelope <= 0.0001f && !bIsVoiceActive)
+	if (!bIsVoiceActive && AmplitudeEnvelope <= 0.0005f && TransientEnvelope <= 0.0005f && IgnitionEnvelope <= 0.0005f)
 	{
 		OutLeftSample = 0.0f;
 		OutRightSample = 0.0f;
 		return 0.0f;
 	}
 
-	float MonoVoiceSample = 0.0f;
 	const float InvSampleRate = 1.0f / SampleRate;
 
-	switch (TimbreProfile)
+	// 1. Snappy Envelope: fast 60ms rise on button press, clean 120ms cutoff on release (no lingering drones)
+	if (bIsVoiceActive)
 	{
-	case EVoiceTimbreProfile::SubBassPad:
-		{
-			// Deep Grounding Sub-Bass Anchor (0.15s attack, 2.2s release)
-			if (bIsVoiceActive)
-			{
-				AmplitudeEnvelope = FMath::FInterpTo(AmplitudeEnvelope, 1.0f, InvSampleRate, 7.0f);
-			}
-			else
-			{
-				AmplitudeEnvelope = FMath::FInterpTo(AmplitudeEnvelope, 0.0f, InvSampleRate, 0.65f);
-			}
-
-			CarrierPhaseAngle += (NoteFrequencyHz * 2.0f * PI) * InvSampleRate;
-			if (CarrierPhaseAngle > 2.0f * PI) CarrierPhaseAngle -= 2.0f * PI;
-
-			// Pure deep sine with gentle 2nd harmonic octave
-			const float FundamentalSine = FMath::Sin(CarrierPhaseAngle);
-			const float SecondHarmonicOctave = FMath::Sin(CarrierPhaseAngle * 2.0f) * 0.15f;
-			MonoVoiceSample = (FundamentalSine + SecondHarmonicOctave) * AmplitudeEnvelope * 0.65f;
-		}
-		break;
-
-	case EVoiceTimbreProfile::CrystallineChime:
-		{
-			// Sparkling High Chime / Glass Pluck (Fast 0.015s strike, 3.5s ring-out)
-			if (bIsVoiceActive)
-			{
-				AmplitudeEnvelope = FMath::FInterpTo(AmplitudeEnvelope, 1.0f, InvSampleRate, 25.0f); // Instant strike
-			}
-			else
-			{
-				AmplitudeEnvelope = FMath::FInterpTo(AmplitudeEnvelope, 0.0f, InvSampleRate, 0.35f); // 3.5s natural decay
-			}
-
-			CarrierPhaseAngle += (NoteFrequencyHz * 2.0f * PI) * InvSampleRate;
-			if (CarrierPhaseAngle > 2.0f * PI) CarrierPhaseAngle -= 2.0f * PI;
-
-			HarmonicPhaseAngle += (NoteFrequencyHz * 2.001f * 2.0f * PI) * InvSampleRate;
-			if (HarmonicPhaseAngle > 2.0f * PI) HarmonicPhaseAngle -= 2.0f * PI;
-
-			// Crystalline harmonics (Fundamental + 2nd + 4th shimmer)
-			const float ChimeFundamental = FMath::Sin(CarrierPhaseAngle);
-			const float ChimeSecondHarmonic = FMath::Sin(HarmonicPhaseAngle * 2.0f) * 0.35f;
-			const float ChimeFourthHarmonic = FMath::Sin(CarrierPhaseAngle * 4.0f) * 0.12f;
-			MonoVoiceSample = (ChimeFundamental + ChimeSecondHarmonic + ChimeFourthHarmonic) * AmplitudeEnvelope * 0.60f;
-		}
-		break;
-
-	case EVoiceTimbreProfile::VortexSweep:
-		{
-			// Resonant Vortex Drone (0.4s attack, 2.5s release, slow phase modulation)
-			if (bIsVoiceActive)
-			{
-				AmplitudeEnvelope = FMath::FInterpTo(AmplitudeEnvelope, 1.0f, InvSampleRate, 4.0f);
-			}
-			else
-			{
-				AmplitudeEnvelope = FMath::FInterpTo(AmplitudeEnvelope, 0.0f, InvSampleRate, 0.50f);
-			}
-
-			const float LfoPhaseIncrement = (1.5f * 2.0f * PI) * InvSampleRate;
-			VibratoLfoPhaseAngle += LfoPhaseIncrement;
-			if (VibratoLfoPhaseAngle > 2.0f * PI) VibratoLfoPhaseAngle -= 2.0f * PI;
-
-			const float ModulatedFrequencyHz = NoteFrequencyHz + FMath::Sin(VibratoLfoPhaseAngle) * 12.0f;
-			CarrierPhaseAngle += (ModulatedFrequencyHz * 2.0f * PI) * InvSampleRate;
-			if (CarrierPhaseAngle > 2.0f * PI) CarrierPhaseAngle -= 2.0f * PI;
-
-			const float VortexFundamental = FMath::Sin(CarrierPhaseAngle);
-			const float VortexFifthHarmonic = FMath::Sin(CarrierPhaseAngle * 1.5f) * 0.3f;
-			MonoVoiceSample = (VortexFundamental + VortexFifthHarmonic) * AmplitudeEnvelope * 0.75f;
-		}
-		break;
-
-	case EVoiceTimbreProfile::WarmPad:
-	default:
-		{
-			// Warm Dual-Detuned Pad (0.2s attack, 1.8s ambient release)
-			if (bIsVoiceActive)
-			{
-				AmplitudeEnvelope = FMath::FInterpTo(AmplitudeEnvelope, 1.0f, InvSampleRate, 6.0f);
-			}
-			else
-			{
-				AmplitudeEnvelope = FMath::FInterpTo(AmplitudeEnvelope, 0.0f, InvSampleRate, 0.85f);
-			}
-
-			// Subtle Analog Vibrato (4.5 Hz) modulated by hold time
-			const float LfoPhaseIncrement = (4.5f * 2.0f * PI) * InvSampleRate;
-			VibratoLfoPhaseAngle += LfoPhaseIncrement;
-			if (VibratoLfoPhaseAngle > 2.0f * PI) VibratoLfoPhaseAngle -= 2.0f * PI;
-			const float VibratoOffsetHz = FMath::Sin(VibratoLfoPhaseAngle) * (HoldModulationIntensity * 3.5f);
-
-			const float BaseCarrierFreqHz = FMath::Max(20.0f, NoteFrequencyHz + VibratoOffsetHz);
-			const float DetunedCarrierFreqHz = BaseCarrierFreqHz * 1.0022f; // +3.8 cents detune
-
-			CarrierPhaseAngle += (BaseCarrierFreqHz * 2.0f * PI) * InvSampleRate;
-			if (CarrierPhaseAngle > 2.0f * PI) CarrierPhaseAngle -= 2.0f * PI;
-
-			HarmonicPhaseAngle += (DetunedCarrierFreqHz * 2.0f * PI) * InvSampleRate;
-			if (HarmonicPhaseAngle > 2.0f * PI) HarmonicPhaseAngle -= 2.0f * PI;
-
-			const float OscillatorA = FMath::Sin(CarrierPhaseAngle) + FMath::Sin(CarrierPhaseAngle * 2.0f) * 0.18f;
-			const float OscillatorB = FMath::Sin(HarmonicPhaseAngle) + FMath::Sin(HarmonicPhaseAngle * 2.0f) * 0.18f;
-
-			// Harmonic Octave + Fifth Bloom as player holds button (HoldModulationIntensity 0 -> 1)
-			const float HarmonicBloom = (FMath::Sin(CarrierPhaseAngle * 2.0f) * 0.28f + FMath::Sin(HarmonicPhaseAngle * 3.0f) * 0.18f) * HoldModulationIntensity;
-			MonoVoiceSample = ((OscillatorA + OscillatorB) * 0.5f + HarmonicBloom) * AmplitudeEnvelope * 0.80f;
-		}
-		break;
+		AmplitudeEnvelope = FMath::FInterpTo(AmplitudeEnvelope, 1.0f, InvSampleRate, 16.0f);
+	}
+	else
+	{
+		AmplitudeEnvelope = FMath::FInterpTo(AmplitudeEnvelope, 0.0f, InvSampleRate, 12.0f);
 	}
 
-	// Universal hold bloom for non-WarmPad profiles as well
-	if (TimbreProfile != EVoiceTimbreProfile::WarmPad && HoldModulationIntensity > 0.001f)
-	{
-		MonoVoiceSample += FMath::Sin(CarrierPhaseAngle * 2.0f) * (HoldModulationIntensity * 0.22f) * AmplitudeEnvelope;
-	}
+	// 2. Rising Energy Capacitor Sweep Frequency
+	// Base frequency sweeps smoothly upward by +85% as beam pours energy into crystal
+	const float ChargeRatio = FMath::Clamp(HoldModulationIntensity, 0.0f, 1.0f);
+	const float SweepMultiplier = 1.0f + 0.85f * FMath::Pow(ChargeRatio, 1.5f);
+	const float CurrentBeamFreqHz = NoteFrequencyHz * SweepMultiplier;
 
-	// Musical Bell-Pluck Transient (~120ms resonant chime attack on Note-On)
+	// Electric flutter modulation (14 Hz plasma shimmer)
+	const float FlutterIncrement = (14.0f * 2.0f * PI) * InvSampleRate;
+	FlutterPhaseAngle += FlutterIncrement;
+	if (FlutterPhaseAngle > 2.0f * PI) FlutterPhaseAngle -= 2.0f * PI;
+	const float ElectricFlutter = 1.0f + 0.15f * FMath::Sin(FlutterPhaseAngle);
+
+	CarrierPhaseAngle += (CurrentBeamFreqHz * 2.0f * PI) * InvSampleRate;
+	if (CarrierPhaseAngle > 2.0f * PI) CarrierPhaseAngle -= 2.0f * PI;
+
+	HarmonicPhaseAngle += (CurrentBeamFreqHz * 2.0f * 2.0f * PI) * InvSampleRate;
+	if (HarmonicPhaseAngle > 2.0f * PI) HarmonicPhaseAngle -= 2.0f * PI;
+
+	// Focused Resonant Plasma Sound: fundamental + sparkling 2nd harmonic
+	const float PlasmaFundamental = FMath::Sin(CarrierPhaseAngle);
+	const float PlasmaHarmonic = FMath::Sin(HarmonicPhaseAngle) * 0.35f;
+
+	// Dynamic Charging Gain: builds from gentle hum (0.15) to energetic beam (0.45)
+	// Once crystal reaches full charge (1.0), beam ducks to 0.12 so the crystal drum rhythm dominates!
+	const float DuckingFactor = (ChargeRatio >= 0.99f) ? 0.15f : 1.0f;
+	const float ChargingGain = (0.15f + 0.30f * ChargeRatio) * DuckingFactor;
+
+	float MonoVoiceSample = (PlasmaFundamental * 0.7f + PlasmaHarmonic * 0.3f) * ElectricFlutter * ChargingGain * AmplitudeEnvelope;
+
+	// 3. Tactile Note-On Drum Pad Bite (~70ms crisp percussive transient)
 	if (TransientEnvelope > 0.001f)
 	{
-		TransientEnvelope = FMath::FInterpTo(TransientEnvelope, 0.0f, InvSampleRate, 14.0f); // ~120ms musical bell decay
-		TransientPhaseAngle += (NoteFrequencyHz * 2.0f * 2.0f * PI) * InvSampleRate;
+		TransientEnvelope = FMath::FInterpTo(TransientEnvelope, 0.0f, InvSampleRate, 22.0f); // ~70ms bite
+		TransientPhaseAngle += (NoteFrequencyHz * 3.0f * 2.0f * PI) * InvSampleRate;
 		if (TransientPhaseAngle > 2.0f * PI) TransientPhaseAngle -= 2.0f * PI;
 
-		const float BellPluck = (FMath::Sin(TransientPhaseAngle) * 0.7f + FMath::Sin(TransientPhaseAngle * 1.5f) * 0.3f) * TransientEnvelope * 0.32f;
-		MonoVoiceSample += BellPluck;
+		const float TactileBite = (FMath::Sin(TransientPhaseAngle) * 0.65f + FMath::Sin(TransientPhaseAngle * 1.5f) * 0.35f) * TransientEnvelope * 0.50f;
+		MonoVoiceSample += TactileBite;
+	}
+
+	// 4. Crystal Ignition Flash Strike (~250ms glass chime on 100% full charge)
+	if (IgnitionEnvelope > 0.001f)
+	{
+		IgnitionEnvelope = FMath::FInterpTo(IgnitionEnvelope, 0.0f, InvSampleRate, 6.0f); // ~250ms ring
+		IgnitionPhaseAngle += (NoteFrequencyHz * 2.5f * 2.0f * PI) * InvSampleRate;
+		if (IgnitionPhaseAngle > 2.0f * PI) IgnitionPhaseAngle -= 2.0f * PI;
+
+		const float IgnitionChime = (FMath::Sin(IgnitionPhaseAngle) * 0.7f + FMath::Sin(IgnitionPhaseAngle * 2.76f) * 0.3f) * IgnitionEnvelope * 0.55f;
+		MonoVoiceSample += IgnitionChime;
 	}
 
 	// Equal-power stereo spatial panning
@@ -292,13 +221,22 @@ void UHarmonicConvergenceSynthComponent::TriggerAttractPing(float ChimeFrequency
 	AttractChimeFrequencyHz = ChimeFrequencyHz;
 }
 
-void UHarmonicConvergenceSynthComponent::SetRhythmicPulseSlot(int32 SlotIndex, bool bActive, int32 BeatStep, float NoteFrequencyHz, float StereoPan, EVoiceTimbreProfile TimbreProfile, float Gain)
+void UHarmonicConvergenceSynthComponent::TriggerVoiceIgnition(int32 VoiceIndex)
+{
+	FScopeLock Lock(&AudioLock);
+	if (VoiceIndex >= 0 && VoiceIndex < MaxVoices)
+	{
+		Voices[VoiceIndex].TriggerIgnition();
+	}
+}
+
+void UHarmonicConvergenceSynthComponent::SetRhythmicPulseSlot(int32 SlotIndex, bool bActive, int32 RhythmicMask, float NoteFrequencyHz, float StereoPan, EVoiceTimbreProfile TimbreProfile, float Gain)
 {
 	FScopeLock Lock(&AudioLock);
 	if (SlotIndex >= 0 && SlotIndex < MaxRhythmicSlots)
 	{
 		RhythmicSlots[SlotIndex].bIsActive = bActive;
-		RhythmicSlots[SlotIndex].AssignedBeatStep = FMath::Clamp(BeatStep, 0, 3);
+		RhythmicSlots[SlotIndex].RhythmicPatternMask = RhythmicMask;
 		RhythmicSlots[SlotIndex].BaseFrequencyHz = NoteFrequencyHz;
 		RhythmicSlots[SlotIndex].StereoPanPosition = FMath::Clamp(StereoPan, -1.0f, 1.0f);
 		RhythmicSlots[SlotIndex].TimbreProfile = TimbreProfile;
@@ -340,17 +278,18 @@ int32 UHarmonicConvergenceSynthComponent::OnGenerateAudio(float* OutAudio, int32
 	{
 		CurrentConvergenceEnergy = FMath::FInterpTo(CurrentConvergenceEnergy, TargetConvergenceEnergy, InvSampleRate, 3.5f);
 
-		// Advance Master Beat Clock (100 BPM 4/4 quantization)
-		const float BeatIncrement = (MasterTempoBPM / 60.0f) * InvSampleRate;
-		BeatClockPhase += BeatIncrement;
+		// Advance Master Beat Clock (16th-Note Subdivision Quantization: 4 steps per beat)
+		const float StepIncrement = (MasterTempoBPM * 4.0f / 60.0f) * InvSampleRate;
+		BeatClockPhase += StepIncrement;
 		if (BeatClockPhase >= 1.0f)
 		{
 			BeatClockPhase -= 1.0f;
-			CurrentBeatStep = (CurrentBeatStep + 1) % 4;
+			CurrentBeatStep = (CurrentBeatStep + 1) % 16;
 
+			const int32 StepBit = (1 << CurrentBeatStep);
 			for (int32 SlotIndex = 0; SlotIndex < MaxRhythmicSlots; ++SlotIndex)
 			{
-				if (RhythmicSlots[SlotIndex].bIsActive && RhythmicSlots[SlotIndex].AssignedBeatStep == CurrentBeatStep)
+				if (RhythmicSlots[SlotIndex].bIsActive && (RhythmicSlots[SlotIndex].RhythmicPatternMask & StepBit))
 				{
 					RhythmicSlots[SlotIndex].Trigger();
 				}
@@ -379,7 +318,17 @@ int32 UHarmonicConvergenceSynthComponent::OnGenerateAudio(float* OutAudio, int32
 		AccumulatedLeftChannel += SubBassDroneSample;
 		AccumulatedRightChannel += SubBassDroneSample;
 
-		// 3. Persistent Rhythmic Beat Slots
+		// 3. Persistent Rhythmic Beat Slots with dynamic polyphonic headroom scaling
+		int32 ActiveRhythmicSlotCount = 0;
+		for (int32 SlotIndex = 0; SlotIndex < MaxRhythmicSlots; ++SlotIndex)
+		{
+			if (RhythmicSlots[SlotIndex].Envelope > 0.0005f)
+			{
+				ActiveRhythmicSlotCount++;
+			}
+		}
+		const float DynamicRhythmicHeadroom = (ActiveRhythmicSlotCount > 0) ? (1.0f / FMath::Sqrt(static_cast<float>(ActiveRhythmicSlotCount))) : 1.0f;
+
 		for (int32 SlotIndex = 0; SlotIndex < MaxRhythmicSlots; ++SlotIndex)
 		{
 			if (RhythmicSlots[SlotIndex].Envelope > 0.0005f)
@@ -387,8 +336,8 @@ int32 UHarmonicConvergenceSynthComponent::OnGenerateAudio(float* OutAudio, int32
 				float PulseLeft = 0.0f;
 				float PulseRight = 0.0f;
 				RhythmicSlots[SlotIndex].GenerateSample(CurrentSampleRate, PulseLeft, PulseRight);
-				AccumulatedLeftChannel += PulseLeft;
-				AccumulatedRightChannel += PulseRight;
+				AccumulatedLeftChannel += PulseLeft * DynamicRhythmicHeadroom;
+				AccumulatedRightChannel += PulseRight * DynamicRhythmicHeadroom;
 			}
 		}
 

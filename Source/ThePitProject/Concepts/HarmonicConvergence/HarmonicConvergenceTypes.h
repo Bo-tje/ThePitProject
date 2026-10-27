@@ -51,6 +51,15 @@ struct FStationVoiceConfig
 	// Physical 3D world location of this station's button console (origin for Niagara beam ribbons)
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Station Config")
 	FVector WorldStationLocation = FVector::ZeroVector;
+
+	// 16-step rhythmic pattern bitmask (bits 0..15 corresponding to 16th-note steps in the 4/4 bar)
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Station Config")
+	int32 RhythmicPatternMask = 0x1111;
+
+	// Optional pre-rendered audio stem loop (.wav SoundWave).
+	// If assigned, this stem will loop in synchronized lockstep when the crystal is activated.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Station Config")
+	TObjectPtr<class USoundWave> AudioStemAsset = nullptr;
 };
 
 USTRUCT(BlueprintType)
