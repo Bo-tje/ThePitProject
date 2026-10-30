@@ -48,6 +48,22 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Harmonics|Setup")
 	TObjectPtr<UNiagaraSystem> CenterVortexSystem;
 
+	// Base idle vortex swirl force when no players are active
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Harmonics|Vortex")
+	float VortexBaseForce = 350.0f;
+
+	// Peak vortex swirl force when maximum convergence energy is reached
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Harmonics|Vortex")
+	float VortexMaxForce = 2500.0f;
+
+	// Base particle spawn rate for the central vortex when idle
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Harmonics|Vortex")
+	float VortexBaseSpawnRate = 120.0f;
+
+	// Peak particle spawn rate for the central vortex during convergence
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Harmonics|Vortex")
+	float VortexMaxSpawnRate = 1800.0f;
+
 	// Pure C++ Procedural Synth Component (Zero MetaSound Nodes Required)
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Harmonics|Audio")
 	TObjectPtr<UHarmonicConvergenceSynthComponent> ProceduralSynthComponent;

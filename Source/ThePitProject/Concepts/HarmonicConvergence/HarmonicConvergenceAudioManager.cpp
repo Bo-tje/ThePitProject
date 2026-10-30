@@ -26,10 +26,18 @@ AHarmonicConvergenceAudioManager::AHarmonicConvergenceAudioManager()
 		StationBeamSystem = DefaultBeamSystem.Get();
 	}
 
-	static ConstructorHelpers::FObjectFinderOptional<UNiagaraSystem> DefaultCoreSystem(TEXT("/Game/HarmonicConvergence/NS_ConvergenceCore.NS_ConvergenceCore"));
-	if (DefaultCoreSystem.Succeeded())
+	static ConstructorHelpers::FObjectFinderOptional<UNiagaraSystem> DefaultVortexSystem(TEXT("/Game/Niagara/NS_Empty.NS_Empty"));
+	if (DefaultVortexSystem.Succeeded())
 	{
-		CenterVortexSystem = DefaultCoreSystem.Get();
+		CenterVortexSystem = DefaultVortexSystem.Get();
+	}
+	else
+	{
+		static ConstructorHelpers::FObjectFinderOptional<UNiagaraSystem> DefaultCoreSystem(TEXT("/Game/HarmonicConvergence/NS_ConvergenceCore.NS_ConvergenceCore"));
+		if (DefaultCoreSystem.Succeeded())
+		{
+			CenterVortexSystem = DefaultCoreSystem.Get();
+		}
 	}
 }
 
@@ -61,6 +69,18 @@ void AHarmonicConvergenceAudioManager::BeginPlay()
 	{
 		CenterVortexComponent = UNiagaraFunctionLibrary::SpawnSystemAtLocation(
 			GetWorld(), CenterVortexSystem, CenterLoc, FRotator::ZeroRotator, FVector(1.0f), false, true);
+
+		if (CenterVortexComponent)
+		{
+			// Initialize artist's NS_Empty custom vortex parameters
+			CenterVortexComponent->SetVariableVec3(FName(TEXT("User.myOrigingForce")), FVector::ZeroVector);
+			CenterVortexComponent->SetVariableVec3(FName(TEXT("User.BeamStartLocation")), FVector::ZeroVector);
+			CenterVortexComponent->SetVariableVec3(FName(TEXT("User.CenterLocation")), CenterLoc);
+			CenterVortexComponent->SetVariableFloat(FName(TEXT("User.myVortexForce")), VortexBaseForce);
+			CenterVortexComponent->SetVariableFloat(FName(TEXT("User.mySpawnRate")), VortexBaseSpawnRate);
+			CenterVortexComponent->SetVariableLinearColor(FName(TEXT("User.myColor")), CurrentCoreColor);
+			CenterVortexComponent->SetVariableLinearColor(FName(TEXT("User.CoreColor")), CurrentCoreColor);
+		}
 	}
 	for (const FStationVoiceConfig& Config : StationConfigs)
 	{
@@ -460,10 +480,30 @@ void AHarmonicConvergenceAudioManager::UpdateNiagaraParameters(float DeltaTime)
 		}
 
 		CurrentCoreColor = FMath::CInterpTo(CurrentCoreColor, TargetCoreColor, DeltaTime, 5.0f);
+
+		// Dynamic vortex calculation based on convergence energy and active voice count
+		const float NormalizedEnergy = FMath::Clamp(ConvergenceEnergy / 2.0f, 0.0f, 1.0f);
+		const float TargetVortexForce = (ActiveVoiceCount > 0)
+			? FMath::Lerp(VortexBaseForce, VortexMaxForce, NormalizedEnergy)
+			: VortexBaseForce;
+
+		const float TargetVortexSpawnRate = (ActiveVoiceCount > 0)
+			? FMath::Lerp(VortexBaseSpawnRate * 2.0f, VortexMaxSpawnRate, NormalizedEnergy)
+			: VortexBaseSpawnRate;
+
+		// Drive artist's NS_Empty custom parameters
+		CenterVortexComponent->SetVariableLinearColor(FName(TEXT("User.myColor")), CurrentCoreColor);
+		CenterVortexComponent->SetVariableVec3(FName(TEXT("User.myOrigingForce")), FVector::ZeroVector);
+		CenterVortexComponent->SetVariableVec3(FName(TEXT("User.BeamStartLocation")), FVector::ZeroVector);
+		CenterVortexComponent->SetVariableFloat(FName(TEXT("User.myVortexForce")), TargetVortexForce);
+		CenterVortexComponent->SetVariableFloat(FName(TEXT("User.mySpawnRate")), TargetVortexSpawnRate);
+
+		// Standard framework & backwards compatibility parameters
 		CenterVortexComponent->SetVariableFloat(FName(TEXT("User.ConvergenceEnergy")), ConvergenceEnergy);
 		CenterVortexComponent->SetVariableInt(FName(TEXT("User.ActiveStationCount")), ActiveVoiceCount);
 		CenterVortexComponent->SetVariableFloat(FName(TEXT("User.CoreBrightness")), CoreBrightness);
 		CenterVortexComponent->SetVariableLinearColor(FName(TEXT("User.CoreColor")), CurrentCoreColor);
+		CenterVortexComponent->SetVariableVec3(FName(TEXT("User.CenterLocation")), GetActorLocation());
 	}
 }
 
