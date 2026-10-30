@@ -44,6 +44,11 @@ int32 AHarmonicConvergenceAudioManager::GetStationSection(int32 StationIndex) co
 	return 3;                        // West  (Stations 17–19): Melodic Leads / Chimes (Beat 3)
 }
 
+int32 AHarmonicConvergenceAudioManager::GetCurrentChordProgressionIndex() const
+{
+	return ProceduralSynthComponent ? ProceduralSynthComponent->GetCurrentChordIndex() : 0;
+}
+
 FVector AHarmonicConvergenceAudioManager::GetStationCrystalWorldLocation(int32 StationIndex) const
 {
 	const FVector CenterLoc = GetActorLocation();
@@ -744,6 +749,15 @@ void AHarmonicConvergenceAudioManager::UpdateConvergenceParameters(float DeltaTi
 				const bool bIsActiveLooper = PersistentBeatSlots.IsValidIndex(StationIndex) &&
 				                             PersistentBeatSlots[StationIndex].bIsActive;
 
+				if (VoiceState->bIsOvercharged)
+				{
+					VoiceState->bIsOvercharged = false;
+					if (ProceduralSynthComponent)
+					{
+						ProceduralSynthComponent->SetSlotOvercharge(StationIndex, false);
+					}
+				}
+
 				if (!bIsActiveLooper && StationChargeProgress[StationIndex] > 0.001f)
 				{
 					StationChargeProgress[StationIndex] = FMath::FInterpTo(StationChargeProgress[StationIndex], 0.0f, DeltaTime, 4.0f);
@@ -807,15 +821,34 @@ void AHarmonicConvergenceAudioManager::UpdateBeatSlots(float DeltaTime)
 		{
 			Slot.RemainingLifespan -= DeltaTime;
 			if (Slot.RemainingLifespan <= 0.0f)
-		{
+			{
 				Slot.bIsActive = false;
 				Slot.StationChannelName = NAME_None;
 				Slot.RemainingLifespan = 0.0f;
 				StationChargeProgress[StIdx] = 0.0f;
 
+				// Echo Ripple on crystal expiration: glass bell chime + neighbor ring energy transfer
 				if (ProceduralSynthComponent)
 				{
+					ProceduralSynthComponent->TriggerEchoRipple(Slot.BaseFrequencyHz * 2.0f, Slot.PanPosition);
 					ProceduralSynthComponent->SetRhythmicPulseSlot(SlotIdx, false);
+					ProceduralSynthComponent->SetSlotOvercharge(SlotIdx, false);
+				}
+
+				// Energy transfer: spark neighbor crystals with a soft ghost echo pulse
+				const int32 TotalStCount = StationConfigs.Num();
+				if (TotalStCount > 1)
+				{
+					const int32 LeftNeighbor = (StIdx + TotalStCount - 1) % TotalStCount;
+					const int32 RightNeighbor = (StIdx + 1) % TotalStCount;
+					if (PersistentBeatSlots.IsValidIndex(LeftNeighbor) && !PersistentBeatSlots[LeftNeighbor].bIsActive)
+					{
+						StationPulseFlash[LeftNeighbor] = 0.55f;
+					}
+					if (PersistentBeatSlots.IsValidIndex(RightNeighbor) && !PersistentBeatSlots[RightNeighbor].bIsActive)
+					{
+						StationPulseFlash[RightNeighbor] = 0.55f;
+					}
 				}
 
 				if (StationStemAudioComponents.IsValidIndex(SlotIdx) && StationStemAudioComponents[SlotIdx])
@@ -827,6 +860,7 @@ void AHarmonicConvergenceAudioManager::UpdateBeatSlots(float DeltaTime)
 				{
 					StationCrystalComponents[StIdx]->SetVariableFloat(FName(TEXT("User.LifespanRatio")), 0.15f);
 					StationCrystalComponents[StIdx]->SetVariableFloat(FName(TEXT("User.PulseFlash")), 0.0f);
+					StationCrystalComponents[StIdx]->SetVariableFloat(FName(TEXT("User.EchoRipple")), 1.0f);
 				}
 				if (StationCrystalDynamicMaterials.IsValidIndex(StIdx) && StationCrystalDynamicMaterials[StIdx])
 				{
@@ -834,6 +868,7 @@ void AHarmonicConvergenceAudioManager::UpdateBeatSlots(float DeltaTime)
 					StationCrystalDynamicMaterials[StIdx]->SetScalarParameterValue(TEXT("PulseFlash"), 0.0f);
 				}
 
+				OnCrystalEchoRippleTriggered.Broadcast(StIdx, GetStationCrystalWorldLocation(StIdx));
 				OnPersistentBeatDeactivated.Broadcast(SlotIdx);
 				continue;
 			}
@@ -879,6 +914,32 @@ void AHarmonicConvergenceAudioManager::UpdateBeatSlots(float DeltaTime)
 				Slot.TimbreProfile,
 				AudioFadeAlpha);
 		}
+	}
+
+	// Harmonic Overdrive Evaluation: track simultaneous active crystals for collective climax
+	int32 CurrentlyActiveLoopers = 0;
+	for (const FPersistentBeatSlotInfo& S : PersistentBeatSlots)
+	{
+		if (S.bIsActive) CurrentlyActiveLoopers++;
+	}
+
+	const bool bShouldOverdrive = (CurrentlyActiveLoopers >= OverdriveThreshold);
+	if (bShouldOverdrive != bIsHarmonicOverdrive)
+	{
+		bIsHarmonicOverdrive = bShouldOverdrive;
+		if (bIsHarmonicOverdrive && ProceduralSynthComponent)
+		{
+			ProceduralSynthComponent->TriggerOverdriveDrop();
+		}
+		OnHarmonicOverdriveStateChanged.Broadcast(bIsHarmonicOverdrive, OverdriveIntensity);
+	}
+
+	const float TargetOverdrive = bIsHarmonicOverdrive ? FMath::Clamp((CurrentlyActiveLoopers - OverdriveThreshold + 1) / 4.0f, 0.45f, 1.0f) : 0.0f;
+	OverdriveIntensity = FMath::FInterpTo(OverdriveIntensity, TargetOverdrive, DeltaTime, 3.0f);
+
+	if (ProceduralSynthComponent)
+	{
+		ProceduralSynthComponent->SetOverdriveIntensity(OverdriveIntensity);
 	}
 }
 

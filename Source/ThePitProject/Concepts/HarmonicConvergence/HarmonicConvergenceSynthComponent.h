@@ -137,7 +137,7 @@ struct FConvergenceVoiceDSP
 	float IgnitionPhaseAngle = 0.0f;
 	bool bHasFiredIgnition = false;
 
-	float GenerateSample(float SampleRate, float& OutLeftSample, float& OutRightSample);
+	float GenerateSample(float SampleRate, float ChordMultiplier, float& OutLeftSample, float& OutRightSample);
 	void NoteOn(EVoiceTimbreProfile InTimbreProfile)
 	{
 		TimbreProfile = InTimbreProfile;
@@ -163,6 +163,7 @@ struct FConvergenceVoiceDSP
 struct FRhythmicPulseDSP
 {
 	bool bIsActive = false;
+	bool bIsOvercharged = false; // Live Solo modifier when holding an active crystal
 	int32 RhythmicPatternMask = 0x1111; // 16-bit pattern (bits 0..15 = 16th notes)
 	float BaseFrequencyHz = 130.81f;
 	EVoiceTimbreProfile TimbreProfile = EVoiceTimbreProfile::SubBassPad;
@@ -181,7 +182,7 @@ struct FRhythmicPulseDSP
 		PhaseAngle = 0.0f;
 	}
 
-	float GenerateSample(float SampleRate, float& OutLeftSample, float& OutRightSample);
+	float GenerateSample(float SampleRate, float ChordMultiplier, float& OutLeftSample, float& OutRightSample);
 };
 
 UCLASS(ClassGroup = (Custom), meta = (BlueprintSpawnableComponent))
@@ -227,6 +228,21 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Harmonics|Synth")
 	void TriggerVoiceIgnition(int32 VoiceIndex);
 
+	// --- Live Overcharge Modifier ---
+	UFUNCTION(BlueprintCallable, Category = "Harmonics|Synth")
+	void SetSlotOvercharge(int32 SlotIndex, bool bOvercharge);
+
+	// --- Harmonic Overdrive (Climax / Drop) ---
+	UFUNCTION(BlueprintCallable, Category = "Harmonics|Synth")
+	void SetOverdriveIntensity(float InIntensity);
+
+	UFUNCTION(BlueprintCallable, Category = "Harmonics|Synth")
+	void TriggerOverdriveDrop();
+
+	// --- Echo Ripple (Crystal Expiration) ---
+	UFUNCTION(BlueprintCallable, Category = "Harmonics|Synth")
+	void TriggerEchoRipple(float ChimeFrequencyHz, float StereoPan = 0.0f);
+
 	// --- Persistent Rhythmic Pulse Control ---
 	UFUNCTION(BlueprintCallable, Category = "Harmonics|Synth")
 	void SetRhythmicPulseSlot(int32 SlotIndex, bool bActive, int32 RhythmicMask = 0x1111, float NoteFrequencyHz = 130.81f, float StereoPan = 0.0f, EVoiceTimbreProfile TimbreProfile = EVoiceTimbreProfile::SubBassPad, float Gain = 1.0f);
@@ -242,6 +258,19 @@ public:
 
 	UFUNCTION(BlueprintPure, Category = "Harmonics|Synth")
 	int32 GetCurrentBeatStep() const { return CurrentBeatStep; }
+
+	// --- Evolving Chord Progression ---
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Harmonics|Audio")
+	bool bEnableChordProgression = true;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Harmonics|Audio", meta = (ClampMin = "1", ClampMax = "16"))
+	int32 BarsPerChord = 4;
+
+	UFUNCTION(BlueprintPure, Category = "Harmonics|Synth")
+	int32 GetCurrentChordIndex() const { return CurrentChordIndex; }
+
+	UFUNCTION(BlueprintPure, Category = "Harmonics|Synth")
+	float GetCurrentChordMultiplier() const { return CurrentChordMultiplier; }
 
 protected:
 	virtual bool Init(int32& SampleRate) override;
@@ -269,6 +298,23 @@ private:
 	float AttractChimeEnvelope = 0.0f;
 	float AttractChimePhaseAngle = 0.0f;
 	float AttractChimeFrequencyHz = 523.25f;
+
+	// Harmonic Overdrive State
+	float OverdriveIntensity = 0.0f;
+	float OverdriveDropEnvelope = 0.0f;
+	float OverdriveDropPhaseAngle = 0.0f;
+
+	// Echo Ripple State
+	float EchoRippleEnvelope = 0.0f;
+	float EchoRipplePhaseAngle = 0.0f;
+	float EchoRippleFrequencyHz = 880.0f;
+	float EchoRipplePanPosition = 0.0f;
+
+	// Evolving Chord Progression Clock
+	int32 CurrentMeasureIndex = 0;
+	int32 CurrentChordIndex = 0;
+	float TargetChordMultiplier = 1.0f;
+	float CurrentChordMultiplier = 1.0f;
 
 	// Resonant State-Variable Filters for Left and Right Channels
 	FConvergenceResonantFilter LeftChannelFilter;

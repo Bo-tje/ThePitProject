@@ -86,4 +86,8 @@ struct FVoiceRuntimeState
 	// Current active pitch frequency in Hertz (including any vibrato or scale shifts)
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Voice State")
 	float CurrentFrequency = 261.63f;
+
+	// Whether this station is currently in live Overcharge mode (visitor holding an already active crystal)
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Voice State")
+	bool bIsOvercharged = false;
 };

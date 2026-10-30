@@ -30,6 +30,15 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_ThreeParams(FOnPersistentBeatActivated, FName
 // Event fired when a persistent rhythmic pulse beat finishes its lifespan and fades out
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnPersistentBeatDeactivated, int32, SlotIndex);
 
+// Event fired when Harmonic Overdrive status changes (collective climax / drop)
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnHarmonicOverdriveStateChanged, bool, bIsOverdrive, float, OverdriveIntensity);
+
+// Event fired when an expiring crystal releases an outward Echo Ripple shockwave
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnCrystalEchoRippleTriggered, int32, StationIndex, FVector, WorldLocation);
+
+// Event fired when the evolving chord progression advances to a new chord step
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnChordProgressionChanged, int32, ChordIndex);
+
 // Persistent beat slot tracking struct (4 section slots: 0=Bass, 1=Percussion, 2=Harmony, 3=Melody)
 USTRUCT(BlueprintType)
 struct FPersistentBeatSlotInfo
@@ -137,6 +146,16 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Harmonics|Beat", meta = (ClampMin = "5.0", ClampMax = "300.0"))
 	float BeatLifespanSeconds = 45.0f;
 
+	// Number of simultaneous active crystals required to detonate Harmonic Overdrive (The Drop)
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Harmonics|Overdrive", meta = (ClampMin = "2", ClampMax = "20"))
+	int32 OverdriveThreshold = 8;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Harmonics|Overdrive")
+	bool bIsHarmonicOverdrive = false;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Harmonics|Overdrive")
+	float OverdriveIntensity = 0.0f;
+
 	// --- Delegates for Niagara/Visual synchronization ---
 
 	// Fired when an individual station button is pressed and begins sounding
@@ -158,6 +177,18 @@ public:
 	// Fired when a persistent rhythmic pulse beat finishes its lifespan and fades out
 	UPROPERTY(BlueprintAssignable, Category = "Harmonics|Events")
 	FOnPersistentBeatDeactivated OnPersistentBeatDeactivated;
+
+	// Fired when collective crowd participation triggers or ends Harmonic Overdrive
+	UPROPERTY(BlueprintAssignable, Category = "Harmonics|Events")
+	FOnHarmonicOverdriveStateChanged OnHarmonicOverdriveStateChanged;
+
+	// Fired when an expiring crystal releases an Echo Ripple shockwave to its neighbors
+	UPROPERTY(BlueprintAssignable, Category = "Harmonics|Events")
+	FOnCrystalEchoRippleTriggered OnCrystalEchoRippleTriggered;
+
+	// Fired when the master harmonic chord progression shifts to a new key
+	UPROPERTY(BlueprintAssignable, Category = "Harmonics|Events")
+	FOnChordProgressionChanged OnChordProgressionChanged;
 
 	// --- MetaSound & Musical Scale Control ---
 	UFUNCTION(BlueprintCallable, Category = "Harmonics|Control")
@@ -189,6 +220,15 @@ public:
 
 	UFUNCTION(BlueprintPure, Category = "Harmonics|Beat")
 	const TArray<FPersistentBeatSlotInfo>& GetActiveBeatSlots() const { return PersistentBeatSlots; }
+
+	UFUNCTION(BlueprintPure, Category = "Harmonics|Overdrive")
+	bool IsHarmonicOverdrive() const { return bIsHarmonicOverdrive; }
+
+	UFUNCTION(BlueprintPure, Category = "Harmonics|Overdrive")
+	float GetOverdriveIntensity() const { return OverdriveIntensity; }
+
+	UFUNCTION(BlueprintPure, Category = "Harmonics|Harmony")
+	int32 GetCurrentChordProgressionIndex() const;
 
 	UFUNCTION(BlueprintCallable, Category = "Harmonics|Beat")
 	void ClearAllBeatSlots();
@@ -262,6 +302,7 @@ private:
 	float StationBeatPulse[20] = {0.0f};
 	float StationChargeProgress[20] = {0.0f};
 	int32 LastBeatStep = -1;
+	int32 LastChordIndex = -1;
 
 	UPROPERTY()
 	TWeakObjectPtr<UInputManagerSubSystem> InputSubsystem;
