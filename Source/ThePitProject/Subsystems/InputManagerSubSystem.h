@@ -66,6 +66,10 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "OSC|Sender")
 	void SendOSCString(const FString& Address, const FString& Value);
 
+	// Dedicated ACK sender for reliable hardware controller handshake
+	UFUNCTION(BlueprintCallable, Category = "OSC|Sender")
+	void SendACK(const FString& InIPAddress, int32 SequenceId, int32 InPort = 8888);
+
 	// Dedicated LED & Hardware Output functions
 	UFUNCTION(BlueprintCallable, Category = "OSC|Lighting")
 	void SendLEDState(FName Channel, float Value);
