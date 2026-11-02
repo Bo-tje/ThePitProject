@@ -199,9 +199,14 @@ void AHarmonicConvergenceAudioManager::BeginPlay()
 			if (UNiagaraComponent* BeamComp = UNiagaraFunctionLibrary::SpawnSystemAtLocation(
 				GetWorld(), StationBeamSystem, CrystalTargetLoc, FRotator::ZeroRotator, FVector(1.0f), false, false))
 			{
+				const FVector RelativeStartLoc = Config.WorldStationLocation - CrystalTargetLoc;
+				const FVector DynamicColorVec = FVector(Config.StreamColor.R, Config.StreamColor.G, Config.StreamColor.B) * 25.0f;
+
 				BeamComp->SetVariableVec3(FName(TEXT("User.CenterLocation")), FVector::ZeroVector);
 				BeamComp->SetVariableVec3(FName(TEXT("User.myOrigingForce")), FVector::ZeroVector);
-				BeamComp->SetVariableVec3(FName(TEXT("User.BeamStartLocation")), Config.WorldStationLocation - CrystalTargetLoc);
+				BeamComp->SetVariableVec3(FName(TEXT("User.BeamStartLocation")), RelativeStartLoc);
+				BeamComp->SetVariableVec3(FName(TEXT("User.BeamColor")), DynamicColorVec);
+				BeamComp->SetVariableVec3(FName(TEXT("User.myColor")), DynamicColorVec);
 				BeamComp->SetVariableLinearColor(FName(TEXT("User.BeamColor")), Config.StreamColor);
 				BeamComp->SetVariableLinearColor(FName(TEXT("User.myColor")), Config.StreamColor);
 				BeamComp->SetVariableFloat(FName(TEXT("User.myVortexForce")), VortexBaseForce);
@@ -451,13 +456,25 @@ void AHarmonicConvergenceAudioManager::TriggerStationNoteOn(FName StationChannel
 		{
 			if (UNiagaraComponent* BeamComp = BeamCompPtr->Get())
 			{
-				BeamComp->Activate(true);
+				if (!BeamComp->IsActive())
+				{
+					BeamComp->Activate(true);
+				}
 				if (FoundVoiceIndex != INDEX_NONE)
 				{
 					const FVector CrystalTargetLoc = GetStationCrystalWorldLocation(FoundVoiceIndex);
-					BeamComp->SetVariableVec3(FName(TEXT("User.CenterLocation")), CrystalTargetLoc);
-					BeamComp->SetVariableVec3(FName(TEXT("User.BeamStartLocation")), StationConfigs[FoundVoiceIndex].WorldStationLocation);
-					BeamComp->SetVariableLinearColor(FName(TEXT("User.BeamColor")), StationConfigs[FoundVoiceIndex].StreamColor);
+					const FVector RelativeStartLoc = StationConfigs[FoundVoiceIndex].WorldStationLocation - CrystalTargetLoc;
+					const FLinearColor StreamCol = StationConfigs[FoundVoiceIndex].StreamColor;
+					const FVector DynamicColorVec = FVector(StreamCol.R, StreamCol.G, StreamCol.B) * 35.0f;
+
+					BeamComp->SetVariableVec3(FName(TEXT("User.CenterLocation")), FVector::ZeroVector);
+					BeamComp->SetVariableVec3(FName(TEXT("User.BeamStartLocation")), RelativeStartLoc);
+					BeamComp->SetVariableVec3(FName(TEXT("User.BeamColor")), DynamicColorVec);
+					BeamComp->SetVariableVec3(FName(TEXT("User.myColor")), DynamicColorVec);
+					BeamComp->SetVariableLinearColor(FName(TEXT("User.BeamColor")), StreamCol);
+					BeamComp->SetVariableLinearColor(FName(TEXT("User.myColor")), StreamCol);
+					BeamComp->SetVariableFloat(FName(TEXT("User.mySpawnRate")), VortexBaseSpawnRate * 2.0f);
+					BeamComp->SetVariableFloat(FName(TEXT("User.myVortexForce")), VortexBaseForce * 1.5f);
 				}
 			}
 		}
@@ -505,12 +522,24 @@ void AHarmonicConvergenceAudioManager::TriggerStationNoteOff(FName StationChanne
 				ProceduralSynthComponent->NoteOff(FoundVoiceIndex);
 			}
 
-			// 2. Deactivate per-station Niagara beam component
+			// 2. Gracefully update per-station Niagara beam component
 			if (TObjectPtr<UNiagaraComponent>* BeamCompPtr = StationBeamComponents.Find(StationChannelName))
 			{
 				if (UNiagaraComponent* BeamComp = BeamCompPtr->Get())
 				{
-					BeamComp->Deactivate();
+					const bool bIsActiveLooper = (FoundVoiceIndex != INDEX_NONE) &&
+					                             PersistentBeatSlots.IsValidIndex(FoundVoiceIndex) &&
+					                             PersistentBeatSlots[FoundVoiceIndex].bIsActive;
+
+					if (!bIsActiveLooper)
+					{
+						BeamComp->SetVariableFloat(FName(TEXT("User.mySpawnRate")), 0.0f);
+						BeamComp->Deactivate();
+					}
+					else
+					{
+						BeamComp->SetVariableFloat(FName(TEXT("User.mySpawnRate")), VortexBaseSpawnRate);
+					}
 				}
 			}
 
@@ -624,21 +653,70 @@ void AHarmonicConvergenceAudioManager::Tick(float DeltaTime)
 void AHarmonicConvergenceAudioManager::UpdateNiagaraParameters(float DeltaTime)
 {
 	const float CoreBrightness = FMath::Pow(ConvergenceEnergy, 1.5f);
-	for (const TPair<FName, TObjectPtr<UNiagaraComponent>>& Pair : StationBeamComponents)
+
+	for (int32 StationIdx = 0; StationIdx < StationConfigs.Num(); ++StationIdx)
 	{
-		if (UNiagaraComponent* BeamComp = Pair.Value.Get())
+		const FName ChannelName = StationConfigs[StationIdx].ChannelName;
+		if (TObjectPtr<UNiagaraComponent>* BeamCompPtr = StationBeamComponents.Find(ChannelName))
 		{
-			if (BeamComp->IsActive())
+			if (UNiagaraComponent* BeamComp = BeamCompPtr->Get())
 			{
-				float StationModulation = 0.0f;
-				if (const FVoiceRuntimeState* VoiceState = VoiceStates.Find(Pair.Key))
+				const FVoiceRuntimeState* VoiceState = VoiceStates.Find(ChannelName);
+				const bool bIsPressed = VoiceState && VoiceState->bIsPressed;
+				const bool bIsActiveLooper = PersistentBeatSlots.IsValidIndex(StationIdx) &&
+				                             PersistentBeatSlots[StationIdx].bIsActive;
+
+				const float StationPulse = (StationIdx >= 0 && StationIdx < UE_ARRAY_COUNT(StationPulseFlash)) ? StationPulseFlash[StationIdx] : 0.0f;
+				const float StationBeat = (StationIdx >= 0 && StationIdx < UE_ARRAY_COUNT(StationBeatPulse)) ? StationBeatPulse[StationIdx] : 0.0f;
+				const float CombinedBeatFlash = FMath::Max(StationPulse, StationBeat);
+				const float ChargeRatio = (StationIdx >= 0 && StationIdx < UE_ARRAY_COUNT(StationChargeProgress)) ? StationChargeProgress[StationIdx] : 0.0f;
+
+				// Target spawn rate:
+				float TargetSpawnRate = 0.0f;
+				if (bIsPressed)
 				{
-					StationModulation = VoiceState->ModulationIntensity;
+					TargetSpawnRate = FMath::Lerp(VortexBaseSpawnRate * 1.5f, VortexMaxSpawnRate, ChargeRatio);
 				}
+				else if (bIsActiveLooper)
+				{
+					// Active 16-step rhythmic pattern: steady baseline stream pulsing strongly on every 16th-note trigger
+					TargetSpawnRate = VortexBaseSpawnRate + (CombinedBeatFlash * (VortexMaxSpawnRate * 0.65f));
+				}
+
+				if (TargetSpawnRate > 0.1f)
+				{
+					if (!BeamComp->IsActive())
+					{
+						BeamComp->Activate(true);
+					}
+
+					BeamComp->SetVariableFloat(FName(TEXT("User.mySpawnRate")), TargetSpawnRate);
+
+					// Dynamic vortex rotation force accelerates as crystal charge builds up and convergence energy increases
+					const float CurrentVortexForce = VortexBaseForce * (1.0f + ChargeRatio * 1.5f + 0.5f * ConvergenceEnergy);
+					BeamComp->SetVariableFloat(FName(TEXT("User.myVortexForce")), CurrentVortexForce);
+
+					// Emissive glow intensifies with beat flash and modulation
+					const FLinearColor BaseCol = StationConfigs[StationIdx].StreamColor;
+					const float BloomMultiplier = 25.0f * (1.0f + CombinedBeatFlash * 2.5f);
+					const FVector DynamicColorVec(BaseCol.R * BloomMultiplier, BaseCol.G * BloomMultiplier, BaseCol.B * BloomMultiplier);
+					BeamComp->SetVariableVec3(FName(TEXT("User.BeamColor")), DynamicColorVec);
+					BeamComp->SetVariableVec3(FName(TEXT("User.myColor")), DynamicColorVec);
+				}
+				else
+				{
+					BeamComp->SetVariableFloat(FName(TEXT("User.mySpawnRate")), 0.0f);
+					if (BeamComp->IsActive())
+					{
+						BeamComp->Deactivate();
+					}
+				}
+
+				// Forward standard convergence variables
 				BeamComp->SetVariableFloat(FName(TEXT("User.ConvergenceEnergy")), ConvergenceEnergy);
 				BeamComp->SetVariableInt(FName(TEXT("User.ActiveStationCount")), ActiveVoiceCount);
 				BeamComp->SetVariableFloat(FName(TEXT("User.CoreBrightness")), CoreBrightness);
-				BeamComp->SetVariableFloat(FName(TEXT("User.VoiceModulation")), StationModulation);
+				BeamComp->SetVariableFloat(FName(TEXT("User.VoiceModulation")), VoiceState ? VoiceState->ModulationIntensity : 0.0f);
 			}
 		}
 	}
