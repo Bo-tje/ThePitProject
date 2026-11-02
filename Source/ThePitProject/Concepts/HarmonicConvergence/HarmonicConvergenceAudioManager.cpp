@@ -473,7 +473,7 @@ void AHarmonicConvergenceAudioManager::TriggerStationNoteOn(FName StationChannel
 					BeamComp->SetVariableVec3(FName(TEXT("User.myColor")), DynamicColorVec);
 					BeamComp->SetVariableLinearColor(FName(TEXT("User.BeamColor")), StreamCol);
 					BeamComp->SetVariableLinearColor(FName(TEXT("User.myColor")), StreamCol);
-					BeamComp->SetVariableFloat(FName(TEXT("User.mySpawnRate")), VortexBaseSpawnRate * 2.0f);
+					BeamComp->SetVariableFloat(FName(TEXT("User.mySpawnRate")), VortexMaxSpawnRate);
 					BeamComp->SetVariableFloat(FName(TEXT("User.myVortexForce")), VortexBaseForce * 1.5f);
 				}
 			}
@@ -522,24 +522,13 @@ void AHarmonicConvergenceAudioManager::TriggerStationNoteOff(FName StationChanne
 				ProceduralSynthComponent->NoteOff(FoundVoiceIndex);
 			}
 
-			// 2. Gracefully update per-station Niagara beam component
+			// 2. Option A: Pure momentary stream - immediately stop spawning and deactivate on release
 			if (TObjectPtr<UNiagaraComponent>* BeamCompPtr = StationBeamComponents.Find(StationChannelName))
 			{
 				if (UNiagaraComponent* BeamComp = BeamCompPtr->Get())
 				{
-					const bool bIsActiveLooper = (FoundVoiceIndex != INDEX_NONE) &&
-					                             PersistentBeatSlots.IsValidIndex(FoundVoiceIndex) &&
-					                             PersistentBeatSlots[FoundVoiceIndex].bIsActive;
-
-					if (!bIsActiveLooper)
-					{
-						BeamComp->SetVariableFloat(FName(TEXT("User.mySpawnRate")), 0.0f);
-						BeamComp->Deactivate();
-					}
-					else
-					{
-						BeamComp->SetVariableFloat(FName(TEXT("User.mySpawnRate")), VortexBaseSpawnRate);
-					}
+					BeamComp->SetVariableFloat(FName(TEXT("User.mySpawnRate")), 0.0f);
+					BeamComp->Deactivate();
 				}
 			}
 
@@ -671,16 +660,11 @@ void AHarmonicConvergenceAudioManager::UpdateNiagaraParameters(float DeltaTime)
 				const float CombinedBeatFlash = FMath::Max(StationPulse, StationBeat);
 				const float ChargeRatio = (StationIdx >= 0 && StationIdx < UE_ARRAY_COUNT(StationChargeProgress)) ? StationChargeProgress[StationIdx] : 0.0f;
 
-				// Target spawn rate:
+				// Target spawn rate: Steady rock-solid stream ONLY while physically held down
 				float TargetSpawnRate = 0.0f;
 				if (bIsPressed)
 				{
-					TargetSpawnRate = FMath::Lerp(VortexBaseSpawnRate * 1.5f, VortexMaxSpawnRate, ChargeRatio);
-				}
-				else if (bIsActiveLooper)
-				{
-					// Active 16-step rhythmic pattern: steady baseline stream pulsing strongly on every 16th-note trigger
-					TargetSpawnRate = VortexBaseSpawnRate + (CombinedBeatFlash * (VortexMaxSpawnRate * 0.65f));
+					TargetSpawnRate = VortexMaxSpawnRate;
 				}
 
 				if (TargetSpawnRate > 0.1f)
@@ -692,16 +676,15 @@ void AHarmonicConvergenceAudioManager::UpdateNiagaraParameters(float DeltaTime)
 
 					BeamComp->SetVariableFloat(FName(TEXT("User.mySpawnRate")), TargetSpawnRate);
 
-					// Dynamic vortex rotation force accelerates as crystal charge builds up and convergence energy increases
-					const float CurrentVortexForce = VortexBaseForce * (1.0f + ChargeRatio * 1.5f + 0.5f * ConvergenceEnergy);
-					BeamComp->SetVariableFloat(FName(TEXT("User.myVortexForce")), CurrentVortexForce);
+					// Constant steady vortex swirl force so the stream never shrinks, wavers, or distorts
+					const float StableVortexForce = VortexBaseForce * 1.5f;
+					BeamComp->SetVariableFloat(FName(TEXT("User.myVortexForce")), StableVortexForce);
 
-					// Emissive glow intensifies with beat flash and modulation
+					// Constant steady vibrant emissive color (no beat pulsing or shortening of the stream)
 					const FLinearColor BaseCol = StationConfigs[StationIdx].StreamColor;
-					const float BloomMultiplier = 25.0f * (1.0f + CombinedBeatFlash * 2.5f);
-					const FVector DynamicColorVec(BaseCol.R * BloomMultiplier, BaseCol.G * BloomMultiplier, BaseCol.B * BloomMultiplier);
-					BeamComp->SetVariableVec3(FName(TEXT("User.BeamColor")), DynamicColorVec);
-					BeamComp->SetVariableVec3(FName(TEXT("User.myColor")), DynamicColorVec);
+					const FVector SolidColorVec = FVector(BaseCol.R, BaseCol.G, BaseCol.B) * 30.0f;
+					BeamComp->SetVariableVec3(FName(TEXT("User.BeamColor")), SolidColorVec);
+					BeamComp->SetVariableVec3(FName(TEXT("User.myColor")), SolidColorVec);
 				}
 				else
 				{
