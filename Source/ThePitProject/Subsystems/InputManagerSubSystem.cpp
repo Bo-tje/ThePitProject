@@ -9,6 +9,9 @@ void UInputManagerSubSystem::Initialize(FSubsystemCollectionBase& Collection)
 	Super::Initialize(Collection);
 	StartOSCServer(TEXT("0.0.0.0"), 8000);
 	StartOSCClient(TargetClientIP, TargetClientPort);
+
+	// Prompt all sleeping/resting controllers on the network to transmit their current snapshot
+	RequestSync();
 }
 
 void UInputManagerSubSystem::Deinitialize()
@@ -210,6 +213,21 @@ void UInputManagerSubSystem::SendACK(const FString& InIPAddress, int32 SequenceI
 		UOSCManager::SetOSCMessageAddress(AckMsg, FormatOSCAddress(TEXT("/pit/ack")));
 		UOSCManager::AddInt32(AckMsg, SequenceId);
 		OSCClient->SendOSCMessage(AckMsg);
+	}
+}
+
+void UInputManagerSubSystem::RequestSync()
+{
+	if (!OSCClient)
+	{
+		StartOSCClient(TargetClientIP, TargetClientPort);
+	}
+
+	if (OSCClient)
+	{
+		FOSCMessage SyncMsg;
+		UOSCManager::SetOSCMessageAddress(SyncMsg, FormatOSCAddress(TEXT("/pit/sync")));
+		OSCClient->SendOSCMessage(SyncMsg);
 	}
 }
 

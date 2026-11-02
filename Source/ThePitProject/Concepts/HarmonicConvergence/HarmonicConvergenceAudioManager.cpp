@@ -5,6 +5,9 @@
 #include "NiagaraComponent.h"
 #include "NiagaraFunctionLibrary.h"
 #include "NiagaraSystem.h"
+#include "Quartz/AudioMixerClockHandle.h"
+#include "Quartz/QuartzSubsystem.h"
+#include "Components/SceneComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "Materials/MaterialInstanceDynamic.h"
 #include "UObject/ConstructorHelpers.h"
@@ -58,6 +61,28 @@ int32 AHarmonicConvergenceAudioManager::GetCurrentChordProgressionIndex() const
 	return ProceduralSynthComponent ? ProceduralSynthComponent->GetCurrentChordIndex() : 0;
 }
 
+AActor* AHarmonicConvergenceAudioManager::GetStationCrystalActor(int32 StationIndex) const
+{
+	if (PlacedCrystalActors.IsValidIndex(StationIndex) && PlacedCrystalActors[StationIndex])
+	{
+		return PlacedCrystalActors[StationIndex];
+	}
+
+	if (StationConfigs.IsValidIndex(StationIndex))
+	{
+		if (AActor* TargetActor = StationConfigs[StationIndex].CrystalTargetActor.Get())
+		{
+			return TargetActor;
+		}
+		if (!StationConfigs[StationIndex].CrystalTargetActor.IsNull())
+		{
+			return StationConfigs[StationIndex].CrystalTargetActor.LoadSynchronous();
+		}
+	}
+
+	return nullptr;
+}
+
 FVector AHarmonicConvergenceAudioManager::GetStationCrystalWorldLocation(int32 StationIndex) const
 {
 	const FVector CenterLoc = GetActorLocation();
@@ -66,11 +91,187 @@ FVector AHarmonicConvergenceAudioManager::GetStationCrystalWorldLocation(int32 S
 		return CenterLoc;
 	}
 
-	// Calculate radial vector from center to the station on the floor XY plane
-	const FVector RadialDir = (StationConfigs[StationIndex].WorldStationLocation - CenterLoc).GetSafeNormal2D();
+	// 1. Placed level crystal actor (BP placed in level)
+	if (AActor* CrystalActor = GetStationCrystalActor(StationIndex))
+	{
+		return CrystalActor->GetActorLocation();
+	}
+
+	// 1. Explicit scene component placement point (e.g. child SceneComponent in Blueprint or Actor)
+	if (CrystalPlacementPoints.IsValidIndex(StationIndex) && CrystalPlacementPoints[StationIndex])
+	{
+		return CrystalPlacementPoints[StationIndex]->GetComponentLocation();
+	}
+
+	const FStationVoiceConfig& Config = StationConfigs[StationIndex];
+
+	// 2. Placed level actor (e.g. TargetPoint or Crystal mesh actor picked in editor)
+	if (AActor* TargetActor = Config.CrystalTargetActor.Get())
+	{
+		return TargetActor->GetActorLocation();
+	}
+	else if (!Config.CrystalTargetActor.IsNull())
+	{
+		if (AActor* LoadedActor = Config.CrystalTargetActor.LoadSynchronous())
+		{
+			return LoadedActor->GetActorLocation();
+		}
+	}
+
+	// 3. Custom position (relative offset with 3D widget in editor, or transformed to world space)
+	if (Config.bUseCustomCrystalLocation)
+	{
+		return GetActorTransform().TransformPosition(Config.CustomCrystalLocation);
+	}
+
+	// 4. Default: Central ring layout
+	const FVector RadialDir = (Config.WorldStationLocation - CenterLoc).GetSafeNormal2D();
 	FVector CrystalPos = CenterLoc + RadialDir * CentralCrystalRingRadius;
 	CrystalPos.Z = CenterLoc.Z;
 	return CrystalPos;
+}
+
+FRotator AHarmonicConvergenceAudioManager::GetStationCrystalWorldRotation(int32 StationIndex) const
+{
+	if (!StationConfigs.IsValidIndex(StationIndex))
+	{
+		return FRotator::ZeroRotator;
+	}
+
+	// 1. Placed level crystal actor (BP placed in level)
+	if (AActor* CrystalActor = GetStationCrystalActor(StationIndex))
+	{
+		return CrystalActor->GetActorRotation();
+	}
+
+	// 1. Explicit scene component placement point
+	if (CrystalPlacementPoints.IsValidIndex(StationIndex) && CrystalPlacementPoints[StationIndex])
+	{
+		return CrystalPlacementPoints[StationIndex]->GetComponentRotation();
+	}
+
+	const FStationVoiceConfig& Config = StationConfigs[StationIndex];
+
+	// 2. Placed level actor
+	if (AActor* TargetActor = Config.CrystalTargetActor.Get())
+	{
+		return TargetActor->GetActorRotation();
+	}
+	else if (!Config.CrystalTargetActor.IsNull())
+	{
+		if (AActor* LoadedActor = Config.CrystalTargetActor.LoadSynchronous())
+		{
+			return LoadedActor->GetActorRotation();
+		}
+	}
+
+	// 3. Explicit custom rotation
+	if (Config.bUseCustomCrystalLocation && !Config.CustomCrystalRotation.IsNearlyZero())
+	{
+		return GetActorTransform().TransformRotation(Config.CustomCrystalRotation.Quaternion()).Rotator();
+	}
+
+	// 4. Default rotation: facing outward/towards station railing with 12 degree flare
+	const FVector CenterLoc = GetActorLocation();
+	const FVector CrystalWorldLoc = GetStationCrystalWorldLocation(StationIndex);
+	FVector RadialDir = (Config.WorldStationLocation - CrystalWorldLoc).GetSafeNormal2D();
+	if (RadialDir.IsNearlyZero())
+	{
+		RadialDir = (Config.WorldStationLocation - CenterLoc).GetSafeNormal2D();
+	}
+	FRotator CrystalRot = RadialDir.Rotation();
+	CrystalRot.Pitch = 12.0f; // Upright with slight outward flare
+	return CrystalRot;
+}
+
+void AHarmonicConvergenceAudioManager::SetStationCrystalLocation(int32 StationIndex, const FVector& NewWorldLocation, const FRotator& NewRotation)
+{
+	if (!StationConfigs.IsValidIndex(StationIndex))
+	{
+		return;
+	}
+
+	StationConfigs[StationIndex].bUseCustomCrystalLocation = true;
+	StationConfigs[StationIndex].CustomCrystalLocation = GetActorTransform().InverseTransformPosition(NewWorldLocation);
+	StationConfigs[StationIndex].CustomCrystalRotation = NewRotation;
+
+	const FRotator FinalRot = (!NewRotation.IsNearlyZero()) ? NewRotation : GetStationCrystalWorldRotation(StationIndex);
+
+	if (StationCrystalMeshComponents.IsValidIndex(StationIndex) && StationCrystalMeshComponents[StationIndex])
+	{
+		StationCrystalMeshComponents[StationIndex]->SetWorldLocationAndRotation(NewWorldLocation, FinalRot);
+	}
+
+	if (StationCrystalComponents.IsValidIndex(StationIndex) && StationCrystalComponents[StationIndex])
+	{
+		StationCrystalComponents[StationIndex]->SetWorldLocationAndRotation(NewWorldLocation, FinalRot);
+	}
+
+	const FName ChannelName = StationConfigs[StationIndex].ChannelName;
+	if (TObjectPtr<UNiagaraComponent>* BeamCompPtr = StationBeamComponents.Find(ChannelName))
+	{
+		if (UNiagaraComponent* BeamComp = BeamCompPtr->Get())
+		{
+			BeamComp->SetWorldLocation(NewWorldLocation);
+			const FVector RelativeStartLoc = StationConfigs[StationIndex].WorldStationLocation - NewWorldLocation;
+			BeamComp->SetVariableVec3(FName(TEXT("User.BeamStartLocation")), RelativeStartLoc);
+		}
+	}
+}
+
+void AHarmonicConvergenceAudioManager::SetStationCrystalRelativeLocation(int32 StationIndex, const FVector& NewRelativeLocation, const FRotator& NewRotation)
+{
+	const FVector WorldLoc = GetActorTransform().TransformPosition(NewRelativeLocation);
+	SetStationCrystalLocation(StationIndex, WorldLoc, NewRotation);
+}
+
+void AHarmonicConvergenceAudioManager::ResetStationCrystalToCenter(int32 StationIndex)
+{
+	if (!StationConfigs.IsValidIndex(StationIndex))
+	{
+		return;
+	}
+
+	StationConfigs[StationIndex].bUseCustomCrystalLocation = false;
+	StationConfigs[StationIndex].CustomCrystalLocation = FVector::ZeroVector;
+	StationConfigs[StationIndex].CustomCrystalRotation = FRotator::ZeroRotator;
+	StationConfigs[StationIndex].CrystalTargetActor = nullptr;
+
+	const FVector DefaultLoc = GetStationCrystalWorldLocation(StationIndex);
+	const FRotator DefaultRot = GetStationCrystalWorldRotation(StationIndex);
+
+	if (StationCrystalMeshComponents.IsValidIndex(StationIndex) && StationCrystalMeshComponents[StationIndex])
+	{
+		StationCrystalMeshComponents[StationIndex]->SetWorldLocationAndRotation(DefaultLoc, DefaultRot);
+	}
+
+	if (StationCrystalComponents.IsValidIndex(StationIndex) && StationCrystalComponents[StationIndex])
+	{
+		StationCrystalComponents[StationIndex]->SetWorldLocationAndRotation(DefaultLoc, DefaultRot);
+	}
+
+	const FName ChannelName = StationConfigs[StationIndex].ChannelName;
+	if (TObjectPtr<UNiagaraComponent>* BeamCompPtr = StationBeamComponents.Find(ChannelName))
+	{
+		if (UNiagaraComponent* BeamComp = BeamCompPtr->Get())
+		{
+			BeamComp->SetWorldLocation(DefaultLoc);
+			const FVector RelativeStartLoc = StationConfigs[StationIndex].WorldStationLocation - DefaultLoc;
+			BeamComp->SetVariableVec3(FName(TEXT("User.BeamStartLocation")), RelativeStartLoc);
+		}
+	}
+}
+
+void AHarmonicConvergenceAudioManager::SetAllCrystalsToStationPerimeter(float InwardOffsetDistance)
+{
+	const FVector CenterLoc = GetActorLocation();
+	for (int32 StationIdx = 0; StationIdx < StationConfigs.Num(); ++StationIdx)
+	{
+		const FVector StationLoc = StationConfigs[StationIdx].WorldStationLocation;
+		const FVector InwardDir = (CenterLoc - StationLoc).GetSafeNormal2D();
+		const FVector TargetLoc = StationLoc + InwardDir * InwardOffsetDistance;
+		SetStationCrystalLocation(StationIdx, TargetLoc);
+	}
 }
 
 void AHarmonicConvergenceAudioManager::BeginPlay()
@@ -95,6 +296,24 @@ void AHarmonicConvergenceAudioManager::BeginPlay()
 		PersistentBeatSlots[StationIdx].RemainingLifespan = BeatLifespanSeconds;
 	}
 
+	// Initialize Sample-Accurate Quartz Master Clock (Locks all stems onto synchronized beat grid)
+	if (UQuartzSubsystem* QuartzSubsystem = UQuartzSubsystem::Get(GetWorld()))
+	{
+		FQuartzClockSettings ClockSettings;
+		ClockSettings.bIgnoreLevelChange = false;
+
+		MasterQuartzClock = QuartzSubsystem->CreateNewClock(this, FName(TEXT("HarmonicMasterClock")), ClockSettings, true, true);
+		if (MasterQuartzClock)
+		{
+			FQuartzQuantizationBoundary ImmediateBoundary;
+			ImmediateBoundary.Quantization = EQuartzCommandQuantization::None;
+			FOnQuartzCommandEventBP DummyDelegate;
+			UQuartzClockHandle* ClockRef = MasterQuartzClock;
+			MasterQuartzClock->SetBeatsPerMinute(this, ImmediateBoundary, DummyDelegate, ClockRef, MasterBPM);
+			MasterQuartzClock->StartClock(this, ClockRef);
+		}
+	}
+
 	// Initialize Stem Audio Components for optional pre-rendered WAV SoundWave stems
 	StationStemAudioComponents.SetNum(StationConfigs.Num());
 	for (int32 StationIdx = 0; StationIdx < StationConfigs.Num(); ++StationIdx)
@@ -109,7 +328,18 @@ void AHarmonicConvergenceAudioManager::BeginPlay()
 			StemComp->SetVolumeMultiplier(0.0f);
 			StemComp->AttachToComponent(RootComponent, FAttachmentTransformRules::KeepRelativeTransform);
 			StemComp->RegisterComponent();
-			StemComp->Play();
+			if (MasterQuartzClock)
+			{
+				FQuartzQuantizationBoundary BarBoundary;
+				BarBoundary.Quantization = EQuartzCommandQuantization::Bar;
+				FOnQuartzCommandEventBP DummyDelegate;
+				UQuartzClockHandle* ClockRef = MasterQuartzClock;
+				StemComp->PlayQuantized(this, ClockRef, BarBoundary, DummyDelegate, 0.0f, 0.0f, 0.0f);
+			}
+			else
+			{
+				StemComp->Play();
+			}
 			StationStemAudioComponents[StationIdx] = StemComp;
 		}
 	}
@@ -142,9 +372,7 @@ void AHarmonicConvergenceAudioManager::BeginPlay()
 		StationChargeProgress[StationIdx] = 0.0f;
 
 		const FVector CrystalWorldLoc = GetStationCrystalWorldLocation(StationIdx);
-		const FVector RadialDir = (StationConfigs[StationIdx].WorldStationLocation - CenterLoc).GetSafeNormal2D();
-		FRotator CrystalRot = RadialDir.Rotation();
-		CrystalRot.Pitch = 12.0f; // Upright with slight outward flare
+		const FRotator CrystalRot = GetStationCrystalWorldRotation(StationIdx);
 
 		// Optional Physical Static Mesh support for future custom 3D crystal assets
 		if (CrystalMeshAsset)
@@ -229,9 +457,13 @@ void AHarmonicConvergenceAudioManager::BeginPlay()
 		}
 	}
 
-	if (ProceduralSynthComponent && !ProceduralSynthComponent->IsPlaying())
+	if (ProceduralSynthComponent)
 	{
-		ProceduralSynthComponent->Start();
+		ProceduralSynthComponent->SetMasterBPM(MasterBPM);
+		if (!ProceduralSynthComponent->IsPlaying())
+		{
+			ProceduralSynthComponent->Start();
+		}
 	}
 
 	if (CentralConvergenceAudioComponent && CentralConvergenceAudioComponent->GetSound())
@@ -334,6 +566,23 @@ void AHarmonicConvergenceAudioManager::InitializeDefaultStations()
 		Config.PanPosition = FMath::Clamp(StationX / HalfW, -1.0f, 1.0f);
 
 		StationConfigs.Add(Config);
+	}
+}
+
+void AHarmonicConvergenceAudioManager::SetMasterBPM(float NewBPM)
+{
+	MasterBPM = FMath::Clamp(NewBPM, 40.0f, 240.0f);
+	if (MasterQuartzClock)
+	{
+		FQuartzQuantizationBoundary BarBoundary;
+		BarBoundary.Quantization = EQuartzCommandQuantization::Bar;
+		FOnQuartzCommandEventBP DummyDelegate;
+		UQuartzClockHandle* ClockRef = MasterQuartzClock;
+		MasterQuartzClock->SetBeatsPerMinute(this, BarBoundary, DummyDelegate, ClockRef, MasterBPM);
+	}
+	if (ProceduralSynthComponent)
+	{
+		ProceduralSynthComponent->SetMasterBPM(MasterBPM);
 	}
 }
 
@@ -623,6 +872,15 @@ void AHarmonicConvergenceAudioManager::Tick(float DeltaTime)
 					{
 						StationPulseFlash[StIdx] = 1.0f;
 						StationBeatPulse[StIdx] = 1.0f;
+
+						if (AActor* CrystalActor = GetStationCrystalActor(StIdx))
+						{
+							if (CrystalActor->Implements<UPitCrystalInterface>())
+							{
+								IPitCrystalInterface::Execute_OnCrystalBeatPulse(CrystalActor, 1.0f);
+							}
+						}
+						OnStationBeatPulse.Broadcast(StIdx, 1.0f);
 						if (StationCrystalComponents.IsValidIndex(StIdx) && StationCrystalComponents[StIdx])
 						{
 							StationCrystalComponents[StIdx]->SetVariableFloat(FName(TEXT("User.PulseFlash")), 1.0f);
@@ -720,8 +978,8 @@ void AHarmonicConvergenceAudioManager::UpdateConvergenceParameters(float DeltaTi
 				ActiveVoiceCount++;
 				VoiceState->CurrentHoldDuration += DeltaTime;
 
-				// Charging the crystal: ChargeProgress builds from 0.0 to 1.0 over HoldDurationToUnlockBeat
-				StationChargeProgress[StationIndex] = FMath::Clamp(VoiceState->CurrentHoldDuration / HoldDurationToUnlockBeat, 0.0f, 1.0f);
+				// Charging the crystal: ChargeProgress builds from 0.0 to 1.0 over ButtonHoldThresholdSeconds
+				StationChargeProgress[StationIndex] = FMath::Clamp(VoiceState->CurrentHoldDuration / ButtonHoldThresholdSeconds, 0.0f, 1.0f);
 
 				// Visual brightness scales up from dormant quartz (0.15) to brilliant radiant active (1.0)
 				const float DynamicBrightness = FMath::Lerp(0.15f, 1.0f, StationChargeProgress[StationIndex]);
@@ -736,6 +994,16 @@ void AHarmonicConvergenceAudioManager::UpdateConvergenceParameters(float DeltaTi
 					StationCrystalDynamicMaterials[StationIndex]->SetScalarParameterValue(TEXT("Brightness"), DynamicBrightness);
 				}
 
+				// Notify placed crystal Blueprint actor
+				if (AActor* CrystalActor = GetStationCrystalActor(StationIndex))
+				{
+					if (CrystalActor->Implements<UPitCrystalInterface>())
+					{
+						IPitCrystalInterface::Execute_OnCrystalCharge(CrystalActor, StationChargeProgress[StationIndex]);
+					}
+				}
+				OnStationChargeUpdated.Broadcast(StationIndex, StationChargeProgress[StationIndex]);
+
 				// Audibly swells louder, opens low-pass filter and blooms harmonics as energy pours into the crystal
 				VoiceState->ModulationIntensity = StationChargeProgress[StationIndex];
 				TotalModulationIntensityAccumulator += VoiceState->ModulationIntensity;
@@ -746,7 +1014,7 @@ void AHarmonicConvergenceAudioManager::UpdateConvergenceParameters(float DeltaTi
 				}
 
 				// Check if crystal is fully charged to activate and lock in persistent beat looper (Drum Pad Mode)
-				if (VoiceState->CurrentHoldDuration >= HoldDurationToUnlockBeat)
+				if (VoiceState->CurrentHoldDuration >= ButtonHoldThresholdSeconds)
 				{
 					const int32 SlotIdx = StationIndex;
 					if (PersistentBeatSlots.IsValidIndex(SlotIdx))
@@ -812,6 +1080,13 @@ void AHarmonicConvergenceAudioManager::UpdateConvergenceParameters(float DeltaTi
 									StationCrystalDynamicMaterials[StationIndex]->SetScalarParameterValue(TEXT("PulseFlash"), 1.0f);
 								}
 
+								if (AActor* CrystalActor = GetStationCrystalActor(StationIndex))
+								{
+									if (CrystalActor->Implements<UPitCrystalInterface>())
+									{
+										IPitCrystalInterface::Execute_OnCrystalActivated(CrystalActor);
+									}
+								}
 								OnPersistentBeatActivated.Broadcast(StationChannelName, Slot.RhythmicPatternMask, Slot.BaseFrequencyHz);
 							}
 						}
@@ -942,6 +1217,14 @@ void AHarmonicConvergenceAudioManager::UpdateBeatSlots(float DeltaTime)
 				{
 					StationCrystalDynamicMaterials[StIdx]->SetScalarParameterValue(TEXT("Brightness"), 0.15f);
 					StationCrystalDynamicMaterials[StIdx]->SetScalarParameterValue(TEXT("PulseFlash"), 0.0f);
+				}
+
+				if (AActor* CrystalActor = GetStationCrystalActor(StIdx))
+				{
+					if (CrystalActor->Implements<UPitCrystalInterface>())
+					{
+						IPitCrystalInterface::Execute_OnCrystalDeactivated(CrystalActor);
+					}
 				}
 
 				OnCrystalEchoRippleTriggered.Broadcast(StIdx, GetStationCrystalWorldLocation(StIdx));
@@ -1081,10 +1364,10 @@ void AHarmonicConvergenceAudioManager::UpdateAttractMode(float DeltaTime)
 	if (ActiveVoiceCount == 0 && !bAnyActiveCrystals)
 	{
 		InactivityDurationSeconds += DeltaTime;
-		if (InactivityDurationSeconds >= AttractIdleThreshold)
+		if (InactivityDurationSeconds >= AttractModeTimeoutSeconds)
 		{
 			TimeSinceLastAttractChimeSeconds += DeltaTime;
-			if (TimeSinceLastAttractChimeSeconds >= AttractChimeInterval)
+			if (TimeSinceLastAttractChimeSeconds >= AttractChimeIntervalSeconds)
 		{
 				TimeSinceLastAttractChimeSeconds = 0.0f;
 				if (StationConfigs.Num() > 0)

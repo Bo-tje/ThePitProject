@@ -60,6 +60,22 @@ struct FStationVoiceConfig
 	// If assigned, this stem will loop in synchronized lockstep when the crystal is activated.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Station Config")
 	TObjectPtr<class USoundWave> AudioStemAsset = nullptr;
+
+	// If true, this station's crystal shard uses CustomCrystalLocation instead of the automatic center ring
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Station Config")
+	bool bUseCustomCrystalLocation = false;
+
+	// Custom position for this crystal (relative to manager actor in editor with 3D widget, or world space if set at runtime)
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Station Config", meta = (EditCondition = "bUseCustomCrystalLocation", MakeEditWidget = true))
+	FVector CustomCrystalLocation = FVector::ZeroVector;
+
+	// Custom 3D rotation for this crystal (if zero, automatically rotates towards station railing)
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Station Config", meta = (EditCondition = "bUseCustomCrystalLocation"))
+	FRotator CustomCrystalRotation = FRotator::ZeroRotator;
+
+	// Optional level actor reference (e.g. TargetPoint or placed mesh). If assigned, this actor's transform is used for the crystal.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Station Config")
+	TSoftObjectPtr<AActor> CrystalTargetActor = nullptr;
 };
 
 USTRUCT(BlueprintType)

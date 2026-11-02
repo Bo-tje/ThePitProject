@@ -4,6 +4,7 @@
 #include "GameFramework/Actor.h"
 #include "Components/AudioComponent.h"
 #include "HarmonicConvergenceTypes.h"
+#include "PitCrystalInterface.h"
 #include "HarmonicConvergenceAudioManager.generated.h"
 
 class UInputManagerSubSystem;
@@ -14,6 +15,8 @@ class UStaticMesh;
 class UStaticMeshComponent;
 class UMaterialInterface;
 class UMaterialInstanceDynamic;
+class USceneComponent;
+class UQuartzClockHandle;
 
 // Event fired when an individual station button is pressed and begins playing its musical tone
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnStationVoiceStarted, FName, StationChannelName, float, NoteFrequencyHz);
@@ -38,6 +41,12 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnCrystalEchoRippleTriggered, int3
 
 // Event fired when the evolving chord progression advances to a new chord step
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnChordProgressionChanged, int32, ChordIndex);
+
+// Event fired when a station's charge progress changes (0.0 to 1.0)
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnStationChargeUpdated, int32, StationIndex, float, ChargeProgress);
+
+// Event fired on synchronized rhythm steps for a station's crystal to pulse
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnStationBeatPulse, int32, StationIndex, float, PulseIntensity);
 
 // Persistent beat slot tracking struct (4 section slots: 0=Bass, 1=Percussion, 2=Harmony, 3=Melody)
 USTRUCT(BlueprintType)
@@ -115,6 +124,14 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Harmonics|Setup")
 	float CentralCrystalRingRadius = 85.0f;
 
+	// Optional scene components (e.g. child Scene Components in Blueprint or Actor) to visually place each station's crystal
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Harmonics|Setup")
+	TArray<TObjectPtr<USceneComponent>> CrystalPlacementPoints;
+
+	// Optional pre-placed crystal Blueprint actors in the level (0..19). If assigned, beams and growth events route directly to each placed actor.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Harmonics|Setup")
+	TArray<TObjectPtr<AActor>> PlacedCrystalActors;
+
 	// Base idle vortex swirl force when no players are active
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Harmonics|Vortex")
 	float VortexBaseForce = 350.0f;
@@ -139,62 +156,83 @@ public:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Harmonics|Audio")
 	TObjectPtr<UAudioComponent> CentralConvergenceAudioComponent;
 
-	// Enable ambient wind-chimes attract mode when installation is idle
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Harmonics|AttractMode")
-	bool bEnableAttractMode = true;
+	// Sample-accurate master Quartz clock handle locking all stems in synchronized alignment
+	UPROPERTY(Transient, VisibleAnywhere, BlueprintReadOnly, Category = "Harmonics|Audio")
+	TObjectPtr<UQuartzClockHandle> MasterQuartzClock;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Harmonics|AttractMode")
-	float AttractIdleThreshold = 10.0f;
+	// Button hold duration in seconds required to charge and activate a persistent beat crystal shard
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Harmonics|Beat")
+	float ButtonHoldThresholdSeconds = 2.0f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Harmonics|AttractMode")
-	float AttractChimeInterval = 4.0f;
-
-	// --- Persistent Rhythmic Beat Settings ---
-	// Hold duration required to power up and lock in a persistent looping beat slot (seconds, 0.75s default for snappy drum pad feel)
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Harmonics|Beat", meta = (ClampMin = "0.1", ClampMax = "10.0"))
-	float HoldDurationToUnlockBeat = 0.75f;
-
-	// Maximum number of crystals that can be simultaneously active and looping (1..20, default 20 for full drum pad capability)
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Harmonics|Beat", meta = (ClampMin = "1", ClampMax = "20"))
-	int32 MaxActiveCrystals = 20;
-
-	// Total lifespan of a persistent looping beat after button release (seconds)
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Harmonics|Beat", meta = (ClampMin = "5.0", ClampMax = "300.0"))
+	// Lifespan in seconds that an activated rhythmic beat crystal continues looping before decaying
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Harmonics|Beat")
 	float BeatLifespanSeconds = 45.0f;
 
+	// Tempo in beats per minute for the synchronized rhythmic 16-step sequencer (default 120 BPM)
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Harmonics|Beat")
+	float MasterBPM = 120.0f;
+
+	// Updates the tempo (BPM) across both the Quartz stem clock and procedural beat sequencer
+	UFUNCTION(BlueprintCallable, Category = "Harmonics|Beat")
+	void SetMasterBPM(float NewBPM);
+
+	// Maximum number of crystals that can be simultaneously active and looping (1..20, default 20 for full drum pad capability)
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Harmonics|Beat")
+	int32 MaxActiveCrystals = 20;
+
+	// Whether attract mode is enabled when idle
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Harmonics|Attract")
+	bool bEnableAttractMode = true;
+
+	// Number of seconds of inactivity across all stations before attract mode begins chiming
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Harmonics|Attract")
+	float AttractModeTimeoutSeconds = 15.0f;
+
 	// Number of simultaneous active crystals required to detonate Harmonic Overdrive (The Drop)
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Harmonics|Overdrive", meta = (ClampMin = "2", ClampMax = "20"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Harmonics|Overdrive")
 	int32 OverdriveThreshold = 8;
 
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Harmonics|Overdrive")
-	bool bIsHarmonicOverdrive = false;
-
+	// Current Overdrive climax intensity (0.0 = Normal, 1.0 = Full Drop Overdrive)
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Harmonics|Overdrive")
 	float OverdriveIntensity = 0.0f;
 
-	// --- Delegates for Niagara/Visual synchronization ---
+	// Whether the collective harmonic drop is actively detonating
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Harmonics|Overdrive")
+	bool bIsHarmonicOverdrive = false;
 
-	// Fired when an individual station button is pressed and begins sounding
+	// Number of seconds between attract mode chimes while idle
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Harmonics|Attract")
+	float AttractChimeIntervalSeconds = 4.0f;
+
+	// Inactivity time threshold in seconds before actively looping beat crystals begin decaying away
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Harmonics|Attract")
+	float AbandonmentDecaySeconds = 30.0f;
+
+	// Whether attract mode auto-decay of unattended beat loops is enabled
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Harmonics|Attract")
+	bool bEnableAbandonmentDecay = true;
+
+	// Event fired when an individual station voice begins sounding
 	UPROPERTY(BlueprintAssignable, Category = "Harmonics|Events")
 	FOnStationVoiceStarted OnStationVoiceStarted;
 
-	// Fired when an individual station button is released
+	// Event fired when an individual station voice ends
 	UPROPERTY(BlueprintAssignable, Category = "Harmonics|Events")
 	FOnStationVoiceStopped OnStationVoiceStopped;
 
-	// Fired during idle attract mode when a chime rings at a station to invite visitors
+	// Event fired during idle attract mode to invite festival visitors
 	UPROPERTY(BlueprintAssignable, Category = "Harmonics|Events")
 	FOnAttractPingTriggered OnAttractPingTriggered;
 
-	// Fired when a station hold duration reaches threshold and activates a persistent rhythmic pulse beat
+	// Event fired when a visitor holds a station button and locks in a persistent beat shard
 	UPROPERTY(BlueprintAssignable, Category = "Harmonics|Events")
 	FOnPersistentBeatActivated OnPersistentBeatActivated;
 
-	// Fired when a persistent rhythmic pulse beat finishes its lifespan and fades out
+	// Event fired when an active beat shard completes its lifespan and dissolves
 	UPROPERTY(BlueprintAssignable, Category = "Harmonics|Events")
 	FOnPersistentBeatDeactivated OnPersistentBeatDeactivated;
 
-	// Fired when collective crowd participation triggers or ends Harmonic Overdrive
+	// Event fired when Harmonic Overdrive status changes (drop climaxes / finishes)
 	UPROPERTY(BlueprintAssignable, Category = "Harmonics|Events")
 	FOnHarmonicOverdriveStateChanged OnHarmonicOverdriveStateChanged;
 
@@ -205,6 +243,14 @@ public:
 	// Fired when the master harmonic chord progression shifts to a new key
 	UPROPERTY(BlueprintAssignable, Category = "Harmonics|Events")
 	FOnChordProgressionChanged OnChordProgressionChanged;
+
+	// Event fired continuously as a visitor charges a crystal (0.0 to 1.0)
+	UPROPERTY(BlueprintAssignable, Category = "Harmonics|Events")
+	FOnStationChargeUpdated OnStationChargeUpdated;
+
+	// Event fired on rhythm steps to trigger pulse/glow animations on the crystal
+	UPROPERTY(BlueprintAssignable, Category = "Harmonics|Events")
+	FOnStationBeatPulse OnStationBeatPulse;
 
 	// --- MetaSound & Musical Scale Control ---
 	UFUNCTION(BlueprintCallable, Category = "Harmonics|Control")
@@ -253,9 +299,33 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Harmonics|Beat")
 	int32 GetStationSection(int32 StationIndex) const;
 
-	// Calculates the 3D world location of a station's crystal shard in the central ring
+	// Returns the placed crystal actor assigned to this station (from PlacedCrystalActors or StationConfigs.CrystalTargetActor)
+	UFUNCTION(BlueprintPure, Category = "Harmonics|Beat")
+	AActor* GetStationCrystalActor(int32 StationIndex) const;
+
+	// Calculates the 3D world location of a station's crystal shard (respects placement points, target actors, custom offsets, or default ring)
 	UFUNCTION(BlueprintPure, Category = "Harmonics|Beat")
 	FVector GetStationCrystalWorldLocation(int32 StationIndex) const;
+
+	// Calculates the 3D world rotation of a station's crystal shard
+	UFUNCTION(BlueprintPure, Category = "Harmonics|Beat")
+	FRotator GetStationCrystalWorldRotation(int32 StationIndex) const;
+
+	// Dynamically sets or repositions a station's crystal in the world at runtime
+	UFUNCTION(BlueprintCallable, Category = "Harmonics|Beat")
+	void SetStationCrystalLocation(int32 StationIndex, const FVector& NewWorldLocation, const FRotator& NewRotation = FRotator::ZeroRotator);
+
+	// Dynamically sets or repositions a station's crystal relative to the manager actor
+	UFUNCTION(BlueprintCallable, Category = "Harmonics|Beat")
+	void SetStationCrystalRelativeLocation(int32 StationIndex, const FVector& NewRelativeLocation, const FRotator& NewRotation = FRotator::ZeroRotator);
+
+	// Resets a station's crystal back to the central ring layout
+	UFUNCTION(BlueprintCallable, Category = "Harmonics|Beat")
+	void ResetStationCrystalToCenter(int32 StationIndex);
+
+	// Convenience method to reposition all crystals along the railing perimeter near their respective button stations
+	UFUNCTION(BlueprintCallable, Category = "Harmonics|Beat")
+	void SetAllCrystalsToStationPerimeter(float InwardOffsetDistance = 60.0f);
 
 protected:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Harmonics|Runtime")

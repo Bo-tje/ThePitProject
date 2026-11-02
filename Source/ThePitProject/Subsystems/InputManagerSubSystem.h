@@ -70,6 +70,10 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "OSC|Sender")
 	void SendACK(const FString& InIPAddress, int32 SequenceId, int32 InPort = 8888);
 
+	// Requests all hardware controllers to broadcast their current state snapshot
+	UFUNCTION(BlueprintCallable, Category = "OSC|Sender")
+	void RequestSync();
+
 	// Dedicated LED & Hardware Output functions
 	UFUNCTION(BlueprintCallable, Category = "OSC|Lighting")
 	void SendLEDState(FName Channel, float Value);

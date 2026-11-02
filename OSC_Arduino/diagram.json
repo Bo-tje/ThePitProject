@@ -1,0 +1,92 @@
+{
+  "version": 1,
+  "author": "The Pit Project",
+  "editor": "wokwi",
+  "parts": [
+    {
+      "type": "wokwi-esp32-devkit-v1",
+      "id": "esp32",
+      "top": 150,
+      "left": 200,
+      "attrs": {}
+    },
+    {
+      "type": "wokwi-pushbutton",
+      "id": "btn_nw",
+      "top": 30,
+      "left": 40,
+      "attrs": { "color": "red", "label": "Corner 1 (NW)", "key": "1" }
+    },
+    {
+      "type": "wokwi-led",
+      "id": "led_nw",
+      "top": 90,
+      "left": 60,
+      "attrs": { "color": "red", "label": "NW" }
+    },
+    {
+      "type": "wokwi-pushbutton",
+      "id": "btn_ne",
+      "top": 30,
+      "left": 430,
+      "attrs": { "color": "green", "label": "Corner 2 (NE)", "key": "2" }
+    },
+    {
+      "type": "wokwi-led",
+      "id": "led_ne",
+      "top": 90,
+      "left": 450,
+      "attrs": { "color": "green", "label": "NE" }
+    },
+    {
+      "type": "wokwi-pushbutton",
+      "id": "btn_se",
+      "top": 400,
+      "left": 430,
+      "attrs": { "color": "blue", "label": "Corner 3 (SE)", "key": "3" }
+    },
+    {
+      "type": "wokwi-led",
+      "id": "led_se",
+      "top": 340,
+      "left": 450,
+      "attrs": { "color": "blue", "label": "SE" }
+    },
+    {
+      "type": "wokwi-pushbutton",
+      "id": "btn_sw",
+      "top": 400,
+      "left": 40,
+      "attrs": { "color": "yellow", "label": "Corner 4 (SW)", "key": "4" }
+    },
+    {
+      "type": "wokwi-led",
+      "id": "led_sw",
+      "top": 340,
+      "left": 60,
+      "attrs": { "color": "yellow", "label": "SW" }
+    }
+  ],
+  "connections": [
+    [ "esp32:GND.1", "btn_nw:2.l", "black", [ "h-30", "v-130", "h-120" ] ],
+    [ "esp32:D18",   "btn_nw:1.l", "red",   [ "h-50", "v-130", "h-100" ] ],
+    [ "esp32:D13",   "led_nw:A",   "red",   [ "h-30", "v-120", "h-100" ] ],
+    [ "esp32:GND.1", "led_nw:C",   "black", [ "h-40", "v-100", "h-90" ] ],
+
+    [ "esp32:GND.2", "btn_ne:2.r", "black", [ "h30", "v-130", "h150" ] ],
+    [ "esp32:D19",   "btn_ne:1.r", "green", [ "h-70", "v-170", "h300" ] ],
+    [ "esp32:D12",   "led_ne:A",   "green", [ "h-50", "v-150", "h290" ] ],
+    [ "esp32:GND.2", "led_ne:C",   "black", [ "h40", "v-100", "h120" ] ],
+
+    [ "esp32:D22",   "btn_se:1.r", "blue",  [ "h-70", "v270", "h300" ] ],
+    [ "esp32:GND.2", "btn_se:2.r", "black", [ "h30", "v150", "h150" ] ],
+    [ "esp32:D14",   "led_se:A",   "blue",  [ "h-30", "v120", "h270" ] ],
+    [ "esp32:GND.2", "led_se:C",   "black", [ "h40", "v100", "h120" ] ],
+
+    [ "esp32:D23",   "btn_sw:1.l", "gold",  [ "h-50", "v170", "h-100" ] ],
+    [ "esp32:GND.1", "btn_sw:2.l", "black", [ "h-30", "v170", "h-120" ] ],
+    [ "esp32:D27",   "led_sw:A",   "gold",  [ "h-40", "v110", "h-90" ] ],
+    [ "esp32:GND.1", "led_sw:C",   "black", [ "h-20", "v120", "h-110" ] ]
+  ],
+  "dependencies": {}
+}
