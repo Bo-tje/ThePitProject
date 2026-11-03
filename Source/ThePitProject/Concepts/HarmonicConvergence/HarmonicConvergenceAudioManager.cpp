@@ -195,6 +195,14 @@ void AHarmonicConvergenceAudioManager::SetStationCrystalLocation(int32 StationIn
 	StationConfigs[StationIndex].CustomCrystalLocation = GetActorTransform().InverseTransformPosition(NewWorldLocation);
 	StationConfigs[StationIndex].CustomCrystalRotation = NewRotation;
 
+	if (AActor* CrystalActor = GetStationCrystalActor(StationIndex))
+	{
+		if (CrystalActor->Implements<UPitCrystalInterface>())
+		{
+			IPitCrystalInterface::Execute_OnCrystalSetup(CrystalActor, StationIndex, StationConfigs[StationIndex].StreamColor);
+		}
+	}
+
 	const FRotator FinalRot = (!NewRotation.IsNearlyZero()) ? NewRotation : GetStationCrystalWorldRotation(StationIndex);
 
 	if (StationCrystalMeshComponents.IsValidIndex(StationIndex) && StationCrystalMeshComponents[StationIndex])
@@ -469,6 +477,18 @@ void AHarmonicConvergenceAudioManager::BeginPlay()
 	if (CentralConvergenceAudioComponent && CentralConvergenceAudioComponent->GetSound())
 	{
 		CentralConvergenceAudioComponent->Play();
+	}
+
+	// Initialize all placed crystal Blueprint actors with their station index and assigned color
+	for (int32 StationIdx = 0; StationIdx < StationConfigs.Num(); ++StationIdx)
+	{
+		if (AActor* CrystalActor = GetStationCrystalActor(StationIdx))
+		{
+			if (CrystalActor->Implements<UPitCrystalInterface>())
+			{
+				IPitCrystalInterface::Execute_OnCrystalSetup(CrystalActor, StationIdx, StationConfigs[StationIdx].StreamColor);
+			}
+		}
 	}
 }
 
@@ -877,10 +897,10 @@ void AHarmonicConvergenceAudioManager::Tick(float DeltaTime)
 						{
 							if (CrystalActor->Implements<UPitCrystalInterface>())
 							{
-								IPitCrystalInterface::Execute_OnCrystalBeatPulse(CrystalActor, 1.0f);
+								IPitCrystalInterface::Execute_OnCrystalBeatPulse(CrystalActor, 1.0f, StationConfigs[StIdx].StreamColor);
 							}
 						}
-						OnStationBeatPulse.Broadcast(StIdx, 1.0f);
+						OnStationBeatPulse.Broadcast(StIdx, 1.0f, StationConfigs[StIdx].StreamColor);
 						if (StationCrystalComponents.IsValidIndex(StIdx) && StationCrystalComponents[StIdx])
 						{
 							StationCrystalComponents[StIdx]->SetVariableFloat(FName(TEXT("User.PulseFlash")), 1.0f);
@@ -999,10 +1019,10 @@ void AHarmonicConvergenceAudioManager::UpdateConvergenceParameters(float DeltaTi
 				{
 					if (CrystalActor->Implements<UPitCrystalInterface>())
 					{
-						IPitCrystalInterface::Execute_OnCrystalCharge(CrystalActor, StationChargeProgress[StationIndex]);
+						IPitCrystalInterface::Execute_OnCrystalCharge(CrystalActor, StationChargeProgress[StationIndex], StationConfigs[StationIndex].StreamColor);
 					}
 				}
-				OnStationChargeUpdated.Broadcast(StationIndex, StationChargeProgress[StationIndex]);
+				OnStationChargeUpdated.Broadcast(StationIndex, StationChargeProgress[StationIndex], StationConfigs[StationIndex].StreamColor);
 
 				// Audibly swells louder, opens low-pass filter and blooms harmonics as energy pours into the crystal
 				VoiceState->ModulationIntensity = StationChargeProgress[StationIndex];
@@ -1084,7 +1104,7 @@ void AHarmonicConvergenceAudioManager::UpdateConvergenceParameters(float DeltaTi
 								{
 									if (CrystalActor->Implements<UPitCrystalInterface>())
 									{
-										IPitCrystalInterface::Execute_OnCrystalActivated(CrystalActor);
+										IPitCrystalInterface::Execute_OnCrystalActivated(CrystalActor, StationConfigs[StationIndex].StreamColor);
 									}
 								}
 								OnPersistentBeatActivated.Broadcast(StationChannelName, Slot.RhythmicPatternMask, Slot.BaseFrequencyHz);

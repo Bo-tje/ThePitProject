@@ -42,11 +42,11 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnCrystalEchoRippleTriggered, int3
 // Event fired when the evolving chord progression advances to a new chord step
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnChordProgressionChanged, int32, ChordIndex);
 
-// Event fired when a station's charge progress changes (0.0 to 1.0)
-DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnStationChargeUpdated, int32, StationIndex, float, ChargeProgress);
+// Event fired when a station's charge progress changes (0.0 to 1.0) with its assigned color
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_ThreeParams(FOnStationChargeUpdated, int32, StationIndex, float, ChargeProgress, FLinearColor, StationColor);
 
-// Event fired on synchronized rhythm steps for a station's crystal to pulse
-DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnStationBeatPulse, int32, StationIndex, float, PulseIntensity);
+// Event fired on synchronized rhythm steps for a station's crystal to pulse with its assigned color
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_ThreeParams(FOnStationBeatPulse, int32, StationIndex, float, PulseIntensity, FLinearColor, StationColor);
 
 // Persistent beat slot tracking struct (4 section slots: 0=Bass, 1=Percussion, 2=Harmony, 3=Melody)
 USTRUCT(BlueprintType)
