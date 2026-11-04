@@ -11,10 +11,6 @@ class UInputManagerSubSystem;
 class UHarmonicConvergenceSynthComponent;
 class UNiagaraSystem;
 class UNiagaraComponent;
-class UStaticMesh;
-class UStaticMeshComponent;
-class UMaterialInterface;
-class UMaterialInstanceDynamic;
 class USceneComponent;
 class UQuartzClockHandle;
 
@@ -38,9 +34,6 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnHarmonicOverdriveStateChanged, b
 
 // Event fired when an expiring crystal releases an outward Echo Ripple shockwave
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnCrystalEchoRippleTriggered, int32, StationIndex, FVector, WorldLocation);
-
-// Event fired when the evolving chord progression advances to a new chord step
-DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnChordProgressionChanged, int32, ChordIndex);
 
 // Event fired when a station's charge progress changes (0.0 to 1.0) with its assigned color
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_ThreeParams(FOnStationChargeUpdated, int32, StationIndex, float, ChargeProgress, FLinearColor, StationColor);
@@ -108,18 +101,6 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Harmonics|Setup")
 	TObjectPtr<UNiagaraSystem> BeatCrystalSystem;
 
-	// Optional Static Mesh asset to represent the physical crystal shards in the center (when 3D assets are provided)
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Harmonics|Setup")
-	TObjectPtr<UStaticMesh> CrystalMeshAsset;
-
-	// Optional Material for the crystal static meshes (dynamic material instances created automatically)
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Harmonics|Setup")
-	TObjectPtr<UMaterialInterface> CrystalBaseMaterial;
-
-	// Scale factor for the central crystal static meshes
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Harmonics|Setup")
-	FVector CrystalMeshScale = FVector(0.35f, 0.35f, 0.75f);
-
 	// Radius of the central crystal core ring in centimeters (e.g. 85cm)
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Harmonics|Setup")
 	float CentralCrystalRingRadius = 85.0f;
@@ -136,25 +117,13 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Harmonics|Vortex")
 	float VortexBaseForce = 350.0f;
 
-	// Peak vortex swirl force when maximum convergence energy is reached
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Harmonics|Vortex")
-	float VortexMaxForce = 2500.0f;
-
-	// Base particle spawn rate for the central vortex when idle
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Harmonics|Vortex")
-	float VortexBaseSpawnRate = 120.0f;
-
 	// Peak particle spawn rate for the central vortex during convergence
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Harmonics|Vortex")
 	float VortexMaxSpawnRate = 1800.0f;
 
-	// Pure C++ Procedural Synth Component (Zero MetaSound Nodes Required)
+	// Pure C++ Procedural Synth Component
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Harmonics|Audio")
 	TObjectPtr<UHarmonicConvergenceSynthComponent> ProceduralSynthComponent;
-
-	// Optional MetaSound Audio Component (for hybrid/fallback usage)
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Harmonics|Audio")
-	TObjectPtr<UAudioComponent> CentralConvergenceAudioComponent;
 
 	// Sample-accurate master Quartz clock handle locking all stems in synchronized alignment
 	UPROPERTY(Transient, VisibleAnywhere, BlueprintReadOnly, Category = "Harmonics|Audio")
@@ -204,14 +173,6 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Harmonics|Attract")
 	float AttractChimeIntervalSeconds = 4.0f;
 
-	// Inactivity time threshold in seconds before actively looping beat crystals begin decaying away
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Harmonics|Attract")
-	float AbandonmentDecaySeconds = 30.0f;
-
-	// Whether attract mode auto-decay of unattended beat loops is enabled
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Harmonics|Attract")
-	bool bEnableAbandonmentDecay = true;
-
 	// Event fired when an individual station voice begins sounding
 	UPROPERTY(BlueprintAssignable, Category = "Harmonics|Events")
 	FOnStationVoiceStarted OnStationVoiceStarted;
@@ -240,10 +201,6 @@ public:
 	UPROPERTY(BlueprintAssignable, Category = "Harmonics|Events")
 	FOnCrystalEchoRippleTriggered OnCrystalEchoRippleTriggered;
 
-	// Fired when the master harmonic chord progression shifts to a new key
-	UPROPERTY(BlueprintAssignable, Category = "Harmonics|Events")
-	FOnChordProgressionChanged OnChordProgressionChanged;
-
 	// Event fired continuously as a visitor charges a crystal (0.0 to 1.0)
 	UPROPERTY(BlueprintAssignable, Category = "Harmonics|Events")
 	FOnStationChargeUpdated OnStationChargeUpdated;
@@ -270,9 +227,6 @@ public:
 
 	UFUNCTION(BlueprintPure, Category = "Harmonics|Query")
 	float GetConvergenceEnergy() const { return ConvergenceEnergy; }
-
-	UFUNCTION(BlueprintPure, Category = "Harmonics|Query")
-	FVector GetCenterLocation() const { return GetActorLocation(); }
 
 	UFUNCTION(BlueprintPure, Category = "Harmonics|Query")
 	bool GetStationConfig(FName StationChannelName, FStationVoiceConfig& OutConfig) const;
@@ -354,7 +308,6 @@ private:
 	void UpdateConvergenceParameters(float DeltaTime);
 	void UpdateBeatSlots(float DeltaTime);
 	void UpdateAttractMode(float DeltaTime);
-	void PushMetaSoundParameters();
 	void UpdateNiagaraParameters(float DeltaTime);
 
 	UFUNCTION()
@@ -373,13 +326,6 @@ private:
 	UPROPERTY(Transient)
 	TArray<TObjectPtr<UNiagaraComponent>> StationCrystalComponents;
 
-	// Optional physical crystal StaticMesh components
-	UPROPERTY(Transient)
-	TArray<TObjectPtr<UStaticMeshComponent>> StationCrystalMeshComponents;
-
-	UPROPERTY(Transient)
-	TArray<TObjectPtr<UMaterialInstanceDynamic>> StationCrystalDynamicMaterials;
-
 	// Synchronized audio components for optional pre-rendered WAV SoundWave stems
 	UPROPERTY(Transient)
 	TArray<TObjectPtr<UAudioComponent>> StationStemAudioComponents;
@@ -388,7 +334,6 @@ private:
 	float StationBeatPulse[20] = {0.0f};
 	float StationChargeProgress[20] = {0.0f};
 	int32 LastBeatStep = -1;
-	int32 LastChordIndex = -1;
 
 	UPROPERTY()
 	TWeakObjectPtr<UInputManagerSubSystem> InputSubsystem;

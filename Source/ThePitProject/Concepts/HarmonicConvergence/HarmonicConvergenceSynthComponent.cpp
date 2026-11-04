@@ -1,5 +1,14 @@
 #include "HarmonicConvergenceSynthComponent.h"
 
+static FORCEINLINE void AdvanceAndWrapPhase(float& PhaseAngle, float Increment)
+{
+	PhaseAngle += Increment;
+	if (PhaseAngle > 2.0f * PI)
+	{
+		PhaseAngle -= 2.0f * PI;
+	}
+}
+
 float FConvergenceVoiceDSP::GenerateSample(float SampleRate, float ChordMultiplier, float& OutLeftSample, float& OutRightSample)
 {
 	if (!bIsVoiceActive && AmplitudeEnvelope <= 0.0005f && TransientEnvelope <= 0.0005f && IgnitionEnvelope <= 0.0005f)
@@ -28,16 +37,11 @@ float FConvergenceVoiceDSP::GenerateSample(float SampleRate, float ChordMultipli
 	const float CurrentBeamFreqHz = NoteFrequencyHz * SweepMultiplier * ChordMultiplier;
 
 	// Electric flutter modulation (14 Hz plasma shimmer)
-	const float FlutterIncrement = (14.0f * 2.0f * PI) * InvSampleRate;
-	FlutterPhaseAngle += FlutterIncrement;
-	if (FlutterPhaseAngle > 2.0f * PI) FlutterPhaseAngle -= 2.0f * PI;
+	AdvanceAndWrapPhase(FlutterPhaseAngle, (14.0f * 2.0f * PI) * InvSampleRate);
 	const float ElectricFlutter = 1.0f + 0.15f * FMath::Sin(FlutterPhaseAngle);
 
-	CarrierPhaseAngle += (CurrentBeamFreqHz * 2.0f * PI) * InvSampleRate;
-	if (CarrierPhaseAngle > 2.0f * PI) CarrierPhaseAngle -= 2.0f * PI;
-
-	HarmonicPhaseAngle += (CurrentBeamFreqHz * 2.0f * 2.0f * PI) * InvSampleRate;
-	if (HarmonicPhaseAngle > 2.0f * PI) HarmonicPhaseAngle -= 2.0f * PI;
+	AdvanceAndWrapPhase(CarrierPhaseAngle, (CurrentBeamFreqHz * 2.0f * PI) * InvSampleRate);
+	AdvanceAndWrapPhase(HarmonicPhaseAngle, (CurrentBeamFreqHz * 4.0f * PI) * InvSampleRate);
 
 	// Focused Resonant Plasma Sound: fundamental + sparkling 2nd harmonic
 	const float PlasmaFundamental = FMath::Sin(CarrierPhaseAngle);
@@ -54,8 +58,7 @@ float FConvergenceVoiceDSP::GenerateSample(float SampleRate, float ChordMultipli
 	if (TransientEnvelope > 0.001f)
 	{
 		TransientEnvelope = FMath::FInterpTo(TransientEnvelope, 0.0f, InvSampleRate, 22.0f); // ~70ms bite
-		TransientPhaseAngle += (NoteFrequencyHz * 3.0f * 2.0f * PI) * InvSampleRate;
-		if (TransientPhaseAngle > 2.0f * PI) TransientPhaseAngle -= 2.0f * PI;
+		AdvanceAndWrapPhase(TransientPhaseAngle, (NoteFrequencyHz * 3.0f * 2.0f * PI) * InvSampleRate);
 
 		const float TactileBite = (FMath::Sin(TransientPhaseAngle) * 0.65f + FMath::Sin(TransientPhaseAngle * 1.5f) * 0.35f) * TransientEnvelope * 0.50f;
 		MonoVoiceSample += TactileBite;
@@ -65,8 +68,7 @@ float FConvergenceVoiceDSP::GenerateSample(float SampleRate, float ChordMultipli
 	if (IgnitionEnvelope > 0.001f)
 	{
 		IgnitionEnvelope = FMath::FInterpTo(IgnitionEnvelope, 0.0f, InvSampleRate, 6.0f); // ~250ms ring
-		IgnitionPhaseAngle += (NoteFrequencyHz * 2.5f * 2.0f * PI) * InvSampleRate;
-		if (IgnitionPhaseAngle > 2.0f * PI) IgnitionPhaseAngle -= 2.0f * PI;
+		AdvanceAndWrapPhase(IgnitionPhaseAngle, (NoteFrequencyHz * 2.5f * 2.0f * PI) * InvSampleRate);
 
 		const float IgnitionChime = (FMath::Sin(IgnitionPhaseAngle) * 0.7f + FMath::Sin(IgnitionPhaseAngle * 2.76f) * 0.3f) * IgnitionEnvelope * 0.55f;
 		MonoVoiceSample += IgnitionChime;
@@ -102,8 +104,7 @@ float FRhythmicPulseDSP::GenerateSample(float SampleRate, float ChordMultiplier,
 				Envelope = FMath::FInterpTo(Envelope, 0.0f, InvSampleRate, 3.8f);
 				PitchDecay = FMath::FInterpTo(PitchDecay, 0.0f, InvSampleRate, 18.0f);
 				const float KickFreqHz = 55.0f + 95.0f * PitchDecay;
-				PhaseAngle += (KickFreqHz * 2.0f * PI) * InvSampleRate;
-				if (PhaseAngle > 2.0f * PI) PhaseAngle -= 2.0f * PI;
+				AdvanceAndWrapPhase(PhaseAngle, (KickFreqHz * 2.0f * PI) * InvSampleRate);
 
 				const float SubSine = FMath::Sin(PhaseAngle);
 				const float Saturated = FMath::Tanh(SubSine * 1.5f);
@@ -116,8 +117,7 @@ float FRhythmicPulseDSP::GenerateSample(float SampleRate, float ChordMultiplier,
 				PitchDecay = FMath::FInterpTo(PitchDecay, 0.0f, InvSampleRate, 26.0f);
 
 				const float KickFreqHz = 50.0f + 60.0f * PitchDecay;
-				PhaseAngle += (KickFreqHz * 2.0f * PI) * InvSampleRate;
-				if (PhaseAngle > 2.0f * PI) PhaseAngle -= 2.0f * PI;
+				AdvanceAndWrapPhase(PhaseAngle, (KickFreqHz * 2.0f * PI) * InvSampleRate);
 
 				const float SubSine = FMath::Sin(PhaseAngle);
 				const float SubHarmonic = FMath::Sin(PhaseAngle * 2.0f) * 0.15f;
@@ -132,8 +132,7 @@ float FRhythmicPulseDSP::GenerateSample(float SampleRate, float ChordMultiplier,
 			{
 				// Overcharge: rapid 32nd-note ratchet / snare roll fill
 				Envelope = FMath::FInterpTo(Envelope, 0.0f, InvSampleRate, 22.0f);
-				PhaseAngle += (BaseFrequencyHz * 2.2f * 2.0f * PI) * InvSampleRate;
-				if (PhaseAngle > 2.0f * PI) PhaseAngle -= 2.0f * PI;
+				AdvanceAndWrapPhase(PhaseAngle, (BaseFrequencyHz * 2.2f * 2.0f * PI) * InvSampleRate);
 
 				const float ChimeSample = FMath::Sin(PhaseAngle) * 0.7f + FMath::Sin(PhaseAngle * 3.14f) * 0.3f;
 				MonoSample = ChimeSample * Envelope * SlotGain * 0.42f;
@@ -143,8 +142,7 @@ float FRhythmicPulseDSP::GenerateSample(float SampleRate, float ChordMultiplier,
 				// Glass Ping / Crisp Clock Tick: high frequency chime with 80ms decay
 				Envelope = FMath::FInterpTo(Envelope, 0.0f, InvSampleRate, 12.0f);
 
-				PhaseAngle += (BaseFrequencyHz * 1.5f * 2.0f * PI) * InvSampleRate;
-				if (PhaseAngle > 2.0f * PI) PhaseAngle -= 2.0f * PI;
+				AdvanceAndWrapPhase(PhaseAngle, (BaseFrequencyHz * 1.5f * 2.0f * PI) * InvSampleRate);
 
 				const float ChimeSample = FMath::Sin(PhaseAngle) * 0.65f + FMath::Sin(PhaseAngle * 2.76f) * 0.25f + FMath::Sin(PhaseAngle * 5.4f) * 0.10f;
 				MonoSample = ChimeSample * Envelope * SlotGain * 0.28f;
@@ -158,8 +156,7 @@ float FRhythmicPulseDSP::GenerateSample(float SampleRate, float ChordMultiplier,
 			Envelope = FMath::FInterpTo(Envelope, 0.0f, InvSampleRate, 5.0f);
 			const float EffectiveFreq = BaseFrequencyHz * ChordMultiplier * (bIsOvercharged ? 1.5f : 1.0f);
 
-			PhaseAngle += (EffectiveFreq * 2.0f * PI) * InvSampleRate;
-			if (PhaseAngle > 2.0f * PI) PhaseAngle -= 2.0f * PI;
+			AdvanceAndWrapPhase(PhaseAngle, (EffectiveFreq * 2.0f * PI) * InvSampleRate);
 
 			const float Swirl = FMath::Sin(PhaseAngle) * 0.7f + FMath::Sin(PhaseAngle * 1.5f) * 0.3f;
 			MonoSample = Swirl * Envelope * SlotGain * (bIsOvercharged ? 0.45f : 0.32f);
@@ -173,8 +170,7 @@ float FRhythmicPulseDSP::GenerateSample(float SampleRate, float ChordMultiplier,
 			Envelope = FMath::FInterpTo(Envelope, 0.0f, InvSampleRate, bIsOvercharged ? 6.0f : 9.0f);
 			const float EffectiveFreq = BaseFrequencyHz * ChordMultiplier * (bIsOvercharged ? 2.0f : 1.0f);
 
-			PhaseAngle += (EffectiveFreq * 2.0f * PI) * InvSampleRate;
-			if (PhaseAngle > 2.0f * PI) PhaseAngle -= 2.0f * PI;
+			AdvanceAndWrapPhase(PhaseAngle, (EffectiveFreq * 2.0f * PI) * InvSampleRate);
 
 			const float WoodSample = FMath::Sin(PhaseAngle) * 0.78f + FMath::Sin(PhaseAngle * 3.0f) * 0.22f;
 			MonoSample = WoodSample * Envelope * SlotGain * (bIsOvercharged ? 0.50f : 0.35f);
@@ -216,7 +212,7 @@ void UHarmonicConvergenceSynthComponent::NoteOn(int32 VoiceIndex, float NoteFreq
 	{
 		Voices[VoiceIndex].NoteFrequencyHz = NoteFrequencyHz;
 		Voices[VoiceIndex].StereoPanPosition = FMath::Clamp(StereoPan, -1.0f, 1.0f);
-		Voices[VoiceIndex].NoteOn(TimbreProfile);
+		Voices[VoiceIndex].NoteOn();
 	}
 }
 
