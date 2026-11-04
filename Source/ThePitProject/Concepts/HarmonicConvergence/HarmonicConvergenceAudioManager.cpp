@@ -329,9 +329,15 @@ void AHarmonicConvergenceAudioManager::BeginPlay()
 		StationStemAudioComponents[StationIdx] = nullptr;
 		if (StationConfigs[StationIdx].AudioStemAsset)
 		{
+			if (USoundWave* SoundWave = Cast<USoundWave>(StationConfigs[StationIdx].AudioStemAsset))
+			{
+				SoundWave->bLooping = true;
+			}
+
 			UAudioComponent* StemComp = NewObject<UAudioComponent>(this);
 			StemComp->SetSound(StationConfigs[StationIdx].AudioStemAsset);
 			StemComp->bAutoActivate = false;
+			StemComp->bAutoDestroy = false;
 			StemComp->bIsUISound = false;
 			StemComp->SetVolumeMultiplier(0.0f);
 			StemComp->AttachToComponent(RootComponent, FAttachmentTransformRules::KeepRelativeTransform);
@@ -342,7 +348,8 @@ void AHarmonicConvergenceAudioManager::BeginPlay()
 				BarBoundary.Quantization = EQuartzCommandQuantization::Bar;
 				FOnQuartzCommandEventBP DummyDelegate;
 				UQuartzClockHandle* ClockRef = MasterQuartzClock;
-				StemComp->PlayQuantized(this, ClockRef, BarBoundary, DummyDelegate, 0.0f, 0.0f, 0.0f);
+				// InFadeVolumeLevel must be 1.0f so the audio component's internal fader allows audible playback
+				StemComp->PlayQuantized(this, ClockRef, BarBoundary, DummyDelegate, 0.0f, 0.0f, 1.0f);
 			}
 			else
 			{
@@ -1171,12 +1178,12 @@ void AHarmonicConvergenceAudioManager::UpdateBeatSlots(float DeltaTime)
 		if (!Slot.bIsActive || !bValidStation)
 		{
 			// Smoothly fade out stem audio component if not active
-			if (StationStemAudioComponents.IsValidIndex(SlotIdx) && StationStemAudioComponents[SlotIdx])
+			if (StationStemAudioComponents.IsValidIndex(StIdx) && StationStemAudioComponents[StIdx])
 			{
-				const float CurrentVol = StationStemAudioComponents[SlotIdx]->VolumeMultiplier;
+				const float CurrentVol = StationStemAudioComponents[StIdx]->VolumeMultiplier;
 				if (CurrentVol > 0.001f)
 				{
-					StationStemAudioComponents[SlotIdx]->SetVolumeMultiplier(FMath::FInterpTo(CurrentVol, 0.0f, DeltaTime, 6.0f));
+					StationStemAudioComponents[StIdx]->SetVolumeMultiplier(FMath::FInterpTo(CurrentVol, 0.0f, DeltaTime, 6.0f));
 				}
 			}
 			continue;
@@ -1222,9 +1229,9 @@ void AHarmonicConvergenceAudioManager::UpdateBeatSlots(float DeltaTime)
 					}
 				}
 
-				if (StationStemAudioComponents.IsValidIndex(SlotIdx) && StationStemAudioComponents[SlotIdx])
+				if (StationStemAudioComponents.IsValidIndex(StIdx) && StationStemAudioComponents[StIdx])
 				{
-					StationStemAudioComponents[SlotIdx]->SetVolumeMultiplier(0.0f);
+					StationStemAudioComponents[StIdx]->SetVolumeMultiplier(0.0f);
 				}
 
 				if (StationCrystalComponents.IsValidIndex(StIdx) && StationCrystalComponents[StIdx])
@@ -1262,10 +1269,14 @@ void AHarmonicConvergenceAudioManager::UpdateBeatSlots(float DeltaTime)
 		const float AudioFadeAlpha = (Slot.RemainingLifespan < AudioFadeWindow) ? FMath::Clamp(Slot.RemainingLifespan / AudioFadeWindow, 0.0f, 1.0f) : 1.0f;
 
 		// Synchronized Stem volume interpolation
-		if (StationStemAudioComponents.IsValidIndex(SlotIdx) && StationStemAudioComponents[SlotIdx])
+		if (StationStemAudioComponents.IsValidIndex(StIdx) && StationStemAudioComponents[StIdx])
 		{
-			const float CurrentVol = StationStemAudioComponents[SlotIdx]->VolumeMultiplier;
-			StationStemAudioComponents[SlotIdx]->SetVolumeMultiplier(FMath::FInterpTo(CurrentVol, AudioFadeAlpha, DeltaTime, 8.0f));
+			if (!StationStemAudioComponents[StIdx]->IsPlaying())
+			{
+				StationStemAudioComponents[StIdx]->Play();
+			}
+			const float CurrentVol = StationStemAudioComponents[StIdx]->VolumeMultiplier;
+			StationStemAudioComponents[StIdx]->SetVolumeMultiplier(FMath::FInterpTo(CurrentVol, AudioFadeAlpha, DeltaTime, 8.0f));
 		}
 
 		if (!bStationStillPressed)
