@@ -559,7 +559,7 @@ void AHarmonicConvergenceAudioManager::ApplyHarmonicScaleFrequencies()
 		}
 	}
 }
-
+}
 
 void AHarmonicConvergenceAudioManager::HandleOSCButtonPressed(FName StationChannelName)
 {
