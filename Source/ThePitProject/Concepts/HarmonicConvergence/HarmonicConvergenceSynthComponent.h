@@ -48,36 +48,68 @@ struct FConvergenceResonantFilter
 // 4-Tap Stereo Diffusion Reverb Tank for cinematic ambient blending
 struct FAmbientDiffusionTank
 {
-	static constexpr int32 TapSizes[4] = { 1447, 1693, 1979, 2243 };
+	static constexpr int32 DelayBufferSizeTap1 = 1447;
+	static constexpr int32 DelayBufferSizeTap2 = 1693;
+	static constexpr int32 DelayBufferSizeTap3 = 1979;
+	static constexpr int32 DelayBufferSizeTap4 = 2243;
 
-	float DelayBuffers[4][2243] = {};
-	int32 WriteIndices[4] = {};
-	float LowPassDamping[4] = {};
-	float DelayedSamples[4] = {};
+	float DelayBufferTap1[DelayBufferSizeTap1] = {0.0f};
+	float DelayBufferTap2[DelayBufferSizeTap2] = {0.0f};
+	float DelayBufferTap3[DelayBufferSizeTap3] = {0.0f};
+	float DelayBufferTap4[DelayBufferSizeTap4] = {0.0f};
+
+	int32 WriteIndexTap1 = 0;
+	int32 WriteIndexTap2 = 0;
+	int32 WriteIndexTap3 = 0;
+	int32 WriteIndexTap4 = 0;
+
+	float LowPassDampingTap1 = 0.0f;
+	float LowPassDampingTap2 = 0.0f;
+	float LowPassDampingTap3 = 0.0f;
+	float LowPassDampingTap4 = 0.0f;
 
 	inline void Process(float InLeftSample, float InRightSample, float FeedbackGain, float& OutLeftSample, float& OutRightSample)
 	{
 		const float ClampedFeedbackGain = FMath::Clamp(FeedbackGain, 0.0f, 0.88f);
 		const float MonoInputSample = (InLeftSample + InRightSample) * 0.35f;
 
-		for (int32 i = 0; i < 4; ++i)
-		{
-			DelayedSamples[i] = DelayBuffers[i][WriteIndices[i]];
-			LowPassDamping[i] = LowPassDamping[i] * 0.45f + DelayedSamples[i] * 0.55f;
-			DelayBuffers[i][WriteIndices[i]] = MonoInputSample + LowPassDamping[i] * ClampedFeedbackGain;
-			if (++WriteIndices[i] >= TapSizes[i]) WriteIndices[i] = 0;
-		}
+		// Tap 1
+		const float DelayedSampleTap1 = DelayBufferTap1[WriteIndexTap1];
+		LowPassDampingTap1 = LowPassDampingTap1 * 0.45f + DelayedSampleTap1 * 0.55f;
+		DelayBufferTap1[WriteIndexTap1] = MonoInputSample + LowPassDampingTap1 * ClampedFeedbackGain;
+		if (++WriteIndexTap1 >= DelayBufferSizeTap1) WriteIndexTap1 = 0;
+
+		// Tap 2
+		const float DelayedSampleTap2 = DelayBufferTap2[WriteIndexTap2];
+		LowPassDampingTap2 = LowPassDampingTap2 * 0.45f + DelayedSampleTap2 * 0.55f;
+		DelayBufferTap2[WriteIndexTap2] = MonoInputSample + LowPassDampingTap2 * ClampedFeedbackGain;
+		if (++WriteIndexTap2 >= DelayBufferSizeTap2) WriteIndexTap2 = 0;
+
+		// Tap 3
+		const float DelayedSampleTap3 = DelayBufferTap3[WriteIndexTap3];
+		LowPassDampingTap3 = LowPassDampingTap3 * 0.45f + DelayedSampleTap3 * 0.55f;
+		DelayBufferTap3[WriteIndexTap3] = MonoInputSample + LowPassDampingTap3 * ClampedFeedbackGain;
+		if (++WriteIndexTap3 >= DelayBufferSizeTap3) WriteIndexTap3 = 0;
+
+		// Tap 4
+		const float DelayedSampleTap4 = DelayBufferTap4[WriteIndexTap4];
+		LowPassDampingTap4 = LowPassDampingTap4 * 0.45f + DelayedSampleTap4 * 0.55f;
+		DelayBufferTap4[WriteIndexTap4] = MonoInputSample + LowPassDampingTap4 * ClampedFeedbackGain;
+		if (++WriteIndexTap4 >= DelayBufferSizeTap4) WriteIndexTap4 = 0;
 
 		// Cross-coupled stereo output
-		OutLeftSample = (DelayedSamples[0] - DelayedSamples[2]) * 0.5f;
-		OutRightSample = (DelayedSamples[1] - DelayedSamples[3]) * 0.5f;
+		OutLeftSample = (DelayedSampleTap1 - DelayedSampleTap3) * 0.5f;
+		OutRightSample = (DelayedSampleTap2 - DelayedSampleTap4) * 0.5f;
 	}
 
 	inline void Reset()
 	{
-		FMemory::Memzero(DelayBuffers, sizeof(DelayBuffers));
-		FMemory::Memzero(WriteIndices, sizeof(WriteIndices));
-		FMemory::Memzero(LowPassDamping, sizeof(LowPassDamping));
+		FMemory::Memzero(DelayBufferTap1, sizeof(DelayBufferTap1));
+		FMemory::Memzero(DelayBufferTap2, sizeof(DelayBufferTap2));
+		FMemory::Memzero(DelayBufferTap3, sizeof(DelayBufferTap3));
+		FMemory::Memzero(DelayBufferTap4, sizeof(DelayBufferTap4));
+		WriteIndexTap1 = WriteIndexTap2 = WriteIndexTap3 = WriteIndexTap4 = 0;
+		LowPassDampingTap1 = LowPassDampingTap2 = LowPassDampingTap3 = LowPassDampingTap4 = 0.0f;
 	}
 };
 
@@ -90,6 +122,7 @@ struct FConvergenceVoiceDSP
 	float FlutterPhaseAngle = 0.0f;
 	float HoldModulationIntensity = 0.0f;
 	float StereoPanPosition = 0.0f; // -1.0 Left to +1.0 Right
+	EVoiceTimbreProfile TimbreProfile = EVoiceTimbreProfile::WarmPad;
 
 	// Envelope states
 	bool bIsVoiceActive = false;
@@ -105,8 +138,9 @@ struct FConvergenceVoiceDSP
 	bool bHasFiredIgnition = false;
 
 	float GenerateSample(float SampleRate, float ChordMultiplier, float& OutLeftSample, float& OutRightSample);
-	void NoteOn(EVoiceTimbreProfile InTimbreProfile = EVoiceTimbreProfile::WarmPad)
+	void NoteOn(EVoiceTimbreProfile InTimbreProfile)
 	{
+		TimbreProfile = InTimbreProfile;
 		bIsVoiceActive = true;
 		TransientEnvelope = 1.0f; // Fire instant tactile bite
 		TransientPhaseAngle = 0.0f;

@@ -57,6 +57,10 @@ def build_osc_float_packet(channel_address: str, float_value: float) -> bytes:
     return address_bytes + type_tag_bytes + float_payload_bytes
 
 
+# Alias for backward compatibility
+make_osc_message = build_osc_float_packet
+
+
 def send_station_osc_event(station_channel_name: str, signal_value: float):
     """Sends a UDP OSC event packet to Unreal Engine for a specific station channel."""
     udp_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -66,6 +70,10 @@ def send_station_osc_event(station_channel_name: str, signal_value: float):
 
     event_state_label = "PRESSED" if signal_value > 0.5 else "RELEASED"
     print(f"  🎵 [{station_channel_name:<9}] = {signal_value:4.1f} ({event_state_label})")
+
+
+# Alias for backward compatibility
+send_osc = send_station_osc_event
 
 
 def test_20_station_cascade():
@@ -86,6 +94,10 @@ def test_20_station_cascade():
     print("Done.\n")
 
 
+# Alias for backward compatibility
+test_chord = test_20_station_cascade
+
+
 def test_sub_bass_anchors():
     """Tests the low-end grounding sub-bass stations (Stations 1, 5, 10, 16)."""
     print("\n--- Testing Tier 1 (Sub-Bass Anchors: 1, 5, 10, 16) ---")
@@ -101,6 +113,10 @@ def test_sub_bass_anchors():
     print("Done.\n")
 
 
+# Alias for backward compatibility
+test_bass = test_sub_bass_anchors
+
+
 def test_crystalline_chimes():
     """Tests the high sparkling chime stations (Stations 4, 7, 9, 12, 15, 18)."""
     print("\n--- Testing Tier 3 (Crystalline High Chimes: 4, 7, 9, 12, 15, 18) ---")
@@ -112,6 +128,10 @@ def test_crystalline_chimes():
         send_station_osc_event(station_channel_name, STATION_BUTTON_RELEASED)
         time.sleep(0.2)
     print("Done.\n")
+
+
+# Alias for backward compatibility
+test_chimes = test_crystalline_chimes
 
 
 def test_random_crowd_simulation():
@@ -140,6 +160,10 @@ def test_random_crowd_simulation():
     print("Festival simulation complete.\n")
 
 
+# Alias for backward compatibility
+test_random_festival = test_random_crowd_simulation
+
+
 def test_shockwave_hold_and_release():
     """Tests the 5-second sustained hold required to trigger the sub-bass shockwave event on release."""
     print("\n--- Testing Shockwave (>5s hold then release) ---")
@@ -153,6 +177,10 @@ def test_shockwave_hold_and_release():
     print("  💥 Releasing button -> Shockwave Sub-Bass Impact & Ground Ripple Ring!")
     send_station_osc_event(test_station_channel, STATION_BUTTON_RELEASED)
     print("Done.\n")
+
+
+# Alias for backward compatibility
+test_shockwave = test_shockwave_hold_and_release
 
 
 def run_interactive_keyboard_controller():
@@ -221,6 +249,10 @@ def run_interactive_keyboard_controller():
         for station_num in range(1, 21):
             send_station_osc_event(f"player{station_num}", STATION_BUTTON_RELEASED)
         print("\nAll 20 station voices released. Goodbye!\n")
+
+
+# Alias for backward compatibility
+interactive_mode = run_interactive_keyboard_controller
 
 
 if __name__ == "__main__":
