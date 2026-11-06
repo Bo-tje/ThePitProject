@@ -1136,9 +1136,14 @@ void AHarmonicConvergenceAudioManager::UpdateConvergenceParameters(float DeltaTi
 					}
 				}
 
-				if (!bIsActiveLooper && StationChargeProgress[StationIndex] > 0.001f)
+				if (!bIsActiveLooper && StationChargeProgress[StationIndex] > 0.0f)
 				{
 					StationChargeProgress[StationIndex] = FMath::FInterpTo(StationChargeProgress[StationIndex], 0.0f, DeltaTime, 4.0f);
+					if (StationChargeProgress[StationIndex] <= 0.001f)
+					{
+						StationChargeProgress[StationIndex] = 0.0f;
+					}
+
 					const float DecayBrightness = FMath::Lerp(0.15f, 1.0f, StationChargeProgress[StationIndex]);
 					if (StationCrystalComponents.IsValidIndex(StationIndex) && StationCrystalComponents[StationIndex])
 					{
@@ -1148,6 +1153,16 @@ void AHarmonicConvergenceAudioManager::UpdateConvergenceParameters(float DeltaTi
 					{
 						StationCrystalDynamicMaterials[StationIndex]->SetScalarParameterValue(TEXT("Brightness"), DecayBrightness);
 					}
+
+					// Notify placed crystal Blueprint actor as charge decreases
+					if (AActor* CrystalActor = GetStationCrystalActor(StationIndex))
+					{
+						if (CrystalActor->Implements<UPitCrystalInterface>())
+						{
+							IPitCrystalInterface::Execute_OnCrystalCharge(CrystalActor, StationChargeProgress[StationIndex], StationConfigs[StationIndex].StreamColor);
+						}
+					}
+					OnStationChargeUpdated.Broadcast(StationIndex, StationChargeProgress[StationIndex], StationConfigs[StationIndex].StreamColor);
 				}
 			}
 		}
@@ -1250,9 +1265,11 @@ void AHarmonicConvergenceAudioManager::UpdateBeatSlots(float DeltaTime)
 				{
 					if (CrystalActor->Implements<UPitCrystalInterface>())
 					{
+						IPitCrystalInterface::Execute_OnCrystalCharge(CrystalActor, 0.0f, StationConfigs[StIdx].StreamColor);
 						IPitCrystalInterface::Execute_OnCrystalDeactivated(CrystalActor);
 					}
 				}
+				OnStationChargeUpdated.Broadcast(StIdx, 0.0f, StationConfigs[StIdx].StreamColor);
 
 				OnCrystalEchoRippleTriggered.Broadcast(StIdx, GetStationCrystalWorldLocation(StIdx));
 				OnPersistentBeatDeactivated.Broadcast(SlotIdx);
@@ -1358,6 +1375,14 @@ void AHarmonicConvergenceAudioManager::ClearAllBeatSlots()
 		StationPulseFlash[StIdx] = 0.0f;
 		StationBeatPulse[StIdx] = 0.0f;
 		StationChargeProgress[StIdx] = 0.0f;
+		if (AActor* CrystalActor = GetStationCrystalActor(StIdx))
+		{
+			if (CrystalActor->Implements<UPitCrystalInterface>())
+			{
+				IPitCrystalInterface::Execute_OnCrystalCharge(CrystalActor, 0.0f, StationConfigs[StIdx].StreamColor);
+			}
+		}
+		OnStationChargeUpdated.Broadcast(StIdx, 0.0f, StationConfigs[StIdx].StreamColor);
 		if (StationCrystalComponents[StIdx])
 		{
 			StationCrystalComponents[StIdx]->SetVariableFloat(FName(TEXT("User.LifespanRatio")), 0.15f);

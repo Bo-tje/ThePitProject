@@ -20,7 +20,7 @@ public:
 	void OnCrystalSetup(int32 StationIndex, FLinearColor StationColor);
 	virtual void OnCrystalSetup_Implementation(int32 StationIndex, FLinearColor StationColor) {}
 
-	// Called continuously while a visitor charges this station (0.0 = dormant beneath floor, 1.0 = fully grown)
+	// Called continuously as crystal charge changes up or down (0.0 = dormant beneath floor, 1.0 = fully grown)
 	UFUNCTION(BlueprintCallable, BlueprintNativeEvent, Category = "Pit Crystal")
 	void OnCrystalCharge(float ChargeProgress, FLinearColor StationColor);
 	virtual void OnCrystalCharge_Implementation(float ChargeProgress, FLinearColor StationColor) {}
