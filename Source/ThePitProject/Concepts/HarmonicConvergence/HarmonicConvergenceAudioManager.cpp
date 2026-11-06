@@ -613,6 +613,25 @@ void AHarmonicConvergenceAudioManager::SetMasterBPM(float NewBPM)
 	}
 }
 
+void AHarmonicConvergenceAudioManager::SetLifespanDecayRate(float NewRate)
+{
+	LifespanDecayRate = FMath::Max(0.01f, NewRate);
+}
+
+void AHarmonicConvergenceAudioManager::SetChargeDecayRate(float NewRate)
+{
+	ChargeDecayRate = FMath::Max(0.01f, NewRate);
+}
+
+float AHarmonicConvergenceAudioManager::GetStationChargeProgress(int32 StationIndex) const
+{
+	if (StationIndex >= 0 && StationIndex < UE_ARRAY_COUNT(StationChargeProgress))
+	{
+		return StationChargeProgress[StationIndex];
+	}
+	return 0.0f;
+}
+
 void AHarmonicConvergenceAudioManager::SetHarmonicScale(EHarmonicScaleMode NewScaleMode)
 {
 	ScaleMode = NewScaleMode;
@@ -718,8 +737,14 @@ void AHarmonicConvergenceAudioManager::TriggerStationNoteOn(FName StationChannel
 	if (FVoiceRuntimeState* VoiceState = VoiceStates.Find(StationChannelName))
 	{
 		VoiceState->bIsPressed = true;
-		VoiceState->CurrentHoldDuration = 0.0f;
+		VoiceState->CurrentHoldDuration = (FoundVoiceIndex != INDEX_NONE && FoundVoiceIndex < UE_ARRAY_COUNT(StationChargeProgress))
+			? (StationChargeProgress[FoundVoiceIndex] * ButtonHoldThresholdSeconds)
+			: 0.0f;
 		VoiceState->CurrentPressure = 1.0f;
+		if (FoundVoiceIndex != INDEX_NONE && FoundVoiceIndex < UE_ARRAY_COUNT(StationLifespanDecaying))
+		{
+			StationLifespanDecaying[FoundVoiceIndex] = false;
+		}
 
 		// 1. Direct Pure C++ Procedural Synth Trigger with Timbre Profile
 		if (ProceduralSynthComponent && FoundVoiceIndex != INDEX_NONE)
@@ -1138,7 +1163,8 @@ void AHarmonicConvergenceAudioManager::UpdateConvergenceParameters(float DeltaTi
 
 				if (!bIsActiveLooper && StationChargeProgress[StationIndex] > 0.0f)
 				{
-					StationChargeProgress[StationIndex] = FMath::FInterpTo(StationChargeProgress[StationIndex], 0.0f, DeltaTime, 4.0f);
+					const float ActiveDecayRate = StationLifespanDecaying[StationIndex] ? LifespanDecayRate : ChargeDecayRate;
+					StationChargeProgress[StationIndex] = FMath::FInterpTo(StationChargeProgress[StationIndex], 0.0f, DeltaTime, ActiveDecayRate);
 					if (StationChargeProgress[StationIndex] <= 0.001f)
 					{
 						StationChargeProgress[StationIndex] = 0.0f;
@@ -1163,6 +1189,19 @@ void AHarmonicConvergenceAudioManager::UpdateConvergenceParameters(float DeltaTi
 						}
 					}
 					OnStationChargeUpdated.Broadcast(StationIndex, StationChargeProgress[StationIndex], StationConfigs[StationIndex].StreamColor);
+
+					// When completely decayed back to dormant quartz, notify deactivation if expiring from looper
+					if (StationChargeProgress[StationIndex] <= 0.0f && StationLifespanDecaying[StationIndex])
+					{
+						StationLifespanDecaying[StationIndex] = false;
+						if (AActor* CrystalActor = GetStationCrystalActor(StationIndex))
+						{
+							if (CrystalActor->Implements<UPitCrystalInterface>())
+							{
+								IPitCrystalInterface::Execute_OnCrystalDeactivated(CrystalActor);
+							}
+						}
+					}
 				}
 			}
 		}
@@ -1218,7 +1257,10 @@ void AHarmonicConvergenceAudioManager::UpdateBeatSlots(float DeltaTime)
 				Slot.bIsActive = false;
 				Slot.StationChannelName = NAME_None;
 				Slot.RemainingLifespan = 0.0f;
-				StationChargeProgress[StIdx] = 0.0f;
+				if (StIdx >= 0 && StIdx < UE_ARRAY_COUNT(StationLifespanDecaying))
+				{
+					StationLifespanDecaying[StIdx] = true;
+				}
 
 				// Echo Ripple on crystal expiration: glass bell chime + neighbor ring energy transfer
 				if (ProceduralSynthComponent)
@@ -1251,25 +1293,13 @@ void AHarmonicConvergenceAudioManager::UpdateBeatSlots(float DeltaTime)
 
 				if (StationCrystalComponents.IsValidIndex(StIdx) && StationCrystalComponents[StIdx])
 				{
-					StationCrystalComponents[StIdx]->SetVariableFloat(FName(TEXT("User.LifespanRatio")), 0.15f);
 					StationCrystalComponents[StIdx]->SetVariableFloat(FName(TEXT("User.PulseFlash")), 0.0f);
 					StationCrystalComponents[StIdx]->SetVariableFloat(FName(TEXT("User.EchoRipple")), 1.0f);
 				}
 				if (StationCrystalDynamicMaterials.IsValidIndex(StIdx) && StationCrystalDynamicMaterials[StIdx])
 				{
-					StationCrystalDynamicMaterials[StIdx]->SetScalarParameterValue(TEXT("Brightness"), 0.15f);
 					StationCrystalDynamicMaterials[StIdx]->SetScalarParameterValue(TEXT("PulseFlash"), 0.0f);
 				}
-
-				if (AActor* CrystalActor = GetStationCrystalActor(StIdx))
-				{
-					if (CrystalActor->Implements<UPitCrystalInterface>())
-					{
-						IPitCrystalInterface::Execute_OnCrystalCharge(CrystalActor, 0.0f, StationConfigs[StIdx].StreamColor);
-						IPitCrystalInterface::Execute_OnCrystalDeactivated(CrystalActor);
-					}
-				}
-				OnStationChargeUpdated.Broadcast(StIdx, 0.0f, StationConfigs[StIdx].StreamColor);
 
 				OnCrystalEchoRippleTriggered.Broadcast(StIdx, GetStationCrystalWorldLocation(StIdx));
 				OnPersistentBeatDeactivated.Broadcast(SlotIdx);
@@ -1375,6 +1405,7 @@ void AHarmonicConvergenceAudioManager::ClearAllBeatSlots()
 		StationPulseFlash[StIdx] = 0.0f;
 		StationBeatPulse[StIdx] = 0.0f;
 		StationChargeProgress[StIdx] = 0.0f;
+		StationLifespanDecaying[StIdx] = false;
 		if (AActor* CrystalActor = GetStationCrystalActor(StIdx))
 		{
 			if (CrystalActor->Implements<UPitCrystalInterface>())

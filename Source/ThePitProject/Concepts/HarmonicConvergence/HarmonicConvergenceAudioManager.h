@@ -168,6 +168,22 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Harmonics|Beat")
 	float BeatLifespanSeconds = 45.0f;
 
+	// Interp speed / decay rate at which crystal charge smoothly discharges to zero after lifespan expires
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Harmonics|Beat", meta = (ClampMin = "0.01", UIMin = "0.1"))
+	float LifespanDecayRate = 2.0f;
+
+	// Interp speed / decay rate at which crystal charge smoothly discharges to zero when released before full charge
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Harmonics|Beat", meta = (ClampMin = "0.01", UIMin = "0.1"))
+	float ChargeDecayRate = 4.0f;
+
+	// Updates the post-lifespan crystal charge decay rate
+	UFUNCTION(BlueprintCallable, Category = "Harmonics|Beat")
+	void SetLifespanDecayRate(float NewRate);
+
+	// Updates the premature button release crystal charge decay rate
+	UFUNCTION(BlueprintCallable, Category = "Harmonics|Beat")
+	void SetChargeDecayRate(float NewRate);
+
 	// Tempo in beats per minute for the synchronized rhythmic 16-step sequencer (default 120 BPM)
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Harmonics|Beat")
 	float MasterBPM = 120.0f;
@@ -299,6 +315,10 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Harmonics|Beat")
 	int32 GetStationSection(int32 StationIndex) const;
 
+	// Returns the current charge progress (0.0 = dormant/discharged, 1.0 = fully charged) for a given station
+	UFUNCTION(BlueprintPure, Category = "Harmonics|Beat")
+	float GetStationChargeProgress(int32 StationIndex) const;
+
 	// Returns the placed crystal actor assigned to this station (from PlacedCrystalActors or StationConfigs.CrystalTargetActor)
 	UFUNCTION(BlueprintPure, Category = "Harmonics|Beat")
 	AActor* GetStationCrystalActor(int32 StationIndex) const;
@@ -387,6 +407,7 @@ private:
 	float StationPulseFlash[20] = {0.0f};
 	float StationBeatPulse[20] = {0.0f};
 	float StationChargeProgress[20] = {0.0f};
+	bool StationLifespanDecaying[20] = {false};
 	int32 LastBeatStep = -1;
 	int32 LastChordIndex = -1;
 
