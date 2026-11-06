@@ -168,19 +168,11 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Harmonics|Beat")
 	float BeatLifespanSeconds = 45.0f;
 
-	// Interp speed / decay rate at which crystal charge smoothly discharges to zero after lifespan expires
+	// Interp speed / rate at which crystal charge smoothly discharges to zero (both on early release and when lifespan expires)
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Harmonics|Beat", meta = (ClampMin = "0.01", UIMin = "0.1"))
-	float LifespanDecayRate = 2.0f;
+	float ChargeDecayRate = 2.0f;
 
-	// Interp speed / decay rate at which crystal charge smoothly discharges to zero when released before full charge
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Harmonics|Beat", meta = (ClampMin = "0.01", UIMin = "0.1"))
-	float ChargeDecayRate = 4.0f;
-
-	// Updates the post-lifespan crystal charge decay rate
-	UFUNCTION(BlueprintCallable, Category = "Harmonics|Beat")
-	void SetLifespanDecayRate(float NewRate);
-
-	// Updates the premature button release crystal charge decay rate
+	// Updates the crystal charge discharge decay rate
 	UFUNCTION(BlueprintCallable, Category = "Harmonics|Beat")
 	void SetChargeDecayRate(float NewRate);
 

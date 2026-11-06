@@ -613,11 +613,6 @@ void AHarmonicConvergenceAudioManager::SetMasterBPM(float NewBPM)
 	}
 }
 
-void AHarmonicConvergenceAudioManager::SetLifespanDecayRate(float NewRate)
-{
-	LifespanDecayRate = FMath::Max(0.01f, NewRate);
-}
-
 void AHarmonicConvergenceAudioManager::SetChargeDecayRate(float NewRate)
 {
 	ChargeDecayRate = FMath::Max(0.01f, NewRate);
@@ -1163,8 +1158,7 @@ void AHarmonicConvergenceAudioManager::UpdateConvergenceParameters(float DeltaTi
 
 				if (!bIsActiveLooper && StationChargeProgress[StationIndex] > 0.0f)
 				{
-					const float ActiveDecayRate = StationLifespanDecaying[StationIndex] ? LifespanDecayRate : ChargeDecayRate;
-					StationChargeProgress[StationIndex] = FMath::FInterpTo(StationChargeProgress[StationIndex], 0.0f, DeltaTime, ActiveDecayRate);
+					StationChargeProgress[StationIndex] = FMath::FInterpTo(StationChargeProgress[StationIndex], 0.0f, DeltaTime, ChargeDecayRate);
 					if (StationChargeProgress[StationIndex] <= 0.001f)
 					{
 						StationChargeProgress[StationIndex] = 0.0f;
