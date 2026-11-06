@@ -1,9 +1,8 @@
-// --- The Pit Project: Scalable Arduino Nano 33 IoT Controller ---
-// Core: SAMD21 (ARM Cortex-M0+) with u-blox NINA Wi-Fi
+// --- The Pit Project: Scalable ESP32 Controller ---
+// Core: ESP-WROOM-32 with native Wi-Fi
 // Feature: Scalable Station table, Baolian Marquee Protocol Driver, Bidirectional OSC
 
-#include <SPI.h>
-#include <WiFiNINA.h>
+#include <WiFi.h>
 #include <WiFiUdp.h>
 #include <OSCMessage.h>
 
@@ -15,7 +14,7 @@ const bool DEBUG_OFFLINE_MODE = false; // Set to true to test buttons & LEDs wit
 char ssid[] = "HarmonicInstallation";              // Wi-Fi SSID
 char pass[] = "Boislief45";                   // Wi-Fi Password
 
-IPAddress outIp(192, 168, 0, 100);            // Target PC IP on network
+IPAddress outIp(192, 168, 0, 102);            // Target PC IP on network
 const unsigned int outPort = 8000;  // Unreal Engine OSC Server Port
 const unsigned int inPort  = 8888;  // Local Port for Incoming Game State
 
@@ -61,14 +60,14 @@ struct Station {
   unsigned long pressStartTime;
 };
 
-// Physical Station Configuration:
-// Station 1: Button on D4, Baolian Ring on D2 (DAT) and D3 (CLK)
-// Station 2: Button on D5 (Tactile button only)
-// Station 3: Button on D6 (Tactile button only)
+// Physical Station Configuration (ESP32 Pins):
+// Station 1: Button on GPIO 4, Status LED on GPIO 2, Baolian Ring on GPIO 22 (DAT) and GPIO 23 (CLK)
+// Station 2: Button on GPIO 19 (Tactile button only)
+// Station 3: Button on GPIO 21 (Tactile button only)
 Station STATIONS[] = {
-  { 4, LED_BUILTIN, 2,  3, CMD_CYAN,   "/player1", HIGH, 0, false, 0 }, // Station 1 (Baolian Ring + Status LED)
-  { 5, -1,         -1, -1, CMD_YELLOW, "/player2", HIGH, 0, false, 0 }, // Station 2 (Tactile button only)
-  { 6, -1,         -1, -1, CMD_PURPLE, "/player3", HIGH, 0, false, 0 }  // Station 3 (Tactile button only)
+  { 21,  2, 22, 23, CMD_CYAN,   "/player1", HIGH, 0, false, 0 }, // Station 1 (Baolian Ring + Status LED)
+  { 19, -1, -1, -1, CMD_YELLOW, "/player2", HIGH, 0, false, 0 }, // Station 2 (Tactile button only)
+  { 18, -1, -1, -1, CMD_PURPLE, "/player3", HIGH, 0, false, 0 }  // Station 3 (Tactile button only)
 };
 const int NUM_STATIONS = sizeof(STATIONS) / sizeof(STATIONS[0]);
 const unsigned long DEBOUNCE_MS = 30;
@@ -229,7 +228,14 @@ void triggerStateChange() {
 // 7. Setup
 // ============================================================================
 void setup() {
-  delay(2500);
+  // Power Optimization 1: Clock down from 240 MHz to 80 MHz
+  // Drops CPU baseline current by ~40mA while remaining nearly 2x faster than the Nano 33 IoT
+  setCpuFrequencyMhz(80);
+
+  // Power Optimization 2: Turn off Bluetooth radio hardware completely
+  btStop();
+
+  delay(1000);
 
   Serial.begin(115200);
   unsigned long startWait = millis();
@@ -252,7 +258,7 @@ void setup() {
   }
 
   Serial.println("==========================================");
-  Serial.println(" THE PIT: DOME RING CONTROLLER            ");
+  Serial.println(" THE PIT: DOME RING CONTROLLER (ESP32)    ");
   Serial.println(" Sequence: Rainbow (0x09) -> Breathing (0x00) -> Solid -> Breathing -> Rainbow ");
   Serial.println("==========================================");
 
@@ -267,20 +273,26 @@ void setup() {
   if (DEBUG_OFFLINE_MODE) {
     Serial.println("\n*** DEBUG_OFFLINE_MODE IS ACTIVE ***");
     Serial.println("- Wi-Fi connection skipped for fast bench testing.");
-    Serial.println("- Press buttons (D4, D5, D6), send 1, 2, 3, or 'a' / 'g' in Serial.");
+    Serial.println("- Press buttons, send 1, 2, 3, or 'a' / 'g' in Serial.");
     Serial.println("- Send 'k' to simulate incoming ACK from Unreal Engine.\n");
   } else {
-    if (WiFi.status() == WL_NO_MODULE) {
-      Serial.println("[ERROR] NINA Wi-Fi module not detected!");
-      while (true) { delay(1000); }
-    }
-    WiFi.noLowPowerMode();
+    WiFi.mode(WIFI_STA);
+    WiFi.setSleep(false); // Disable modem sleep for ultra low-latency OSC response
+    // Power Optimization 3: Reduce Wi-Fi TX power from 20dBm to 15dBm (reduces peak TX current spikes)
+    WiFi.setTxPower(WIFI_POWER_15dBm);
+    WiFi.begin(ssid, pass);
+    
+    Serial.print("Connecting to Wi-Fi: ");
+    Serial.println(ssid);
     while (WiFi.status() != WL_CONNECTED) {
-      WiFi.begin(ssid, pass);
-      delay(1500);
+      delay(500);
+      Serial.print(".");
     }
+    Serial.println();
+
     Udp.begin(inPort);
-    Serial.println("\n[Wi-Fi Connected!]");
+    Serial.print("[Wi-Fi Connected!] ESP32 IP: ");
+    Serial.println(WiFi.localIP());
 
     // Transmit initial state upon boot until acknowledged
     sendStatePacket();
@@ -305,7 +317,7 @@ void loop() {
       Serial.print(".");
     }
     if (WiFi.status() == WL_CONNECTED) {
-      WiFi.noLowPowerMode();
+      WiFi.setSleep(false);
       Udp.begin(inPort);
       Serial.println("\n[Wi-Fi Reconnected!]");
       triggerStateChange();
@@ -498,4 +510,7 @@ void loop() {
       }
     }
   }
+
+  // Power Optimization 4: Yield 2ms to FreeRTOS IDLE task to enable CPU core clock-gating
+  delay(2);
 }
