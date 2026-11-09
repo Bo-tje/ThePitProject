@@ -93,7 +93,7 @@ void AHarmonicStationActor::BeginPlay()
 	{
 		const FVector CrystalLoc = GetCrystalWorldLocation();
 		if (UNiagaraComponent* Comp = UNiagaraFunctionLibrary::SpawnSystemAtLocation(
-			GetWorld(), StationBeamSystem, CrystalLoc, FRotator::ZeroRotator, FVector(1.0f), false, false))
+			GetWorld(), StationBeamSystem, CrystalLoc, FRotator::ZeroRotator, FVector(1.0f), false, true))
 		{
 			const FVector DynamicColorVec = FVector(StreamColor.R, StreamColor.G, StreamColor.B) * 30.0f;
 			Comp->SetVariableVec3(FName(TEXT("User.CenterLocation")), FVector::ZeroVector);
@@ -138,6 +138,11 @@ void AHarmonicStationActor::EndPlay(const EEndPlayReason::Type EndPlayReason)
 			InputSubsystem->OnInputChanged.RemoveDynamic(this, &AHarmonicStationActor::HandleOSCInputChanged);
 		}
 	}
+	if (BeamComponent)
+	{
+		BeamComponent->DeactivateImmediate();
+	}
+
 	Super::EndPlay(EndPlayReason);
 }
 
@@ -184,10 +189,6 @@ void AHarmonicStationActor::SetPressed(bool bNewPressed)
 	{
 		if (bIsPressed)
 		{
-			if (!BeamComponent->IsActive())
-			{
-				BeamComponent->Activate(true);
-			}
 			BeamComponent->SetVariableVec3(FName(TEXT("User.BeamStartLocation")), GetActorLocation() - GetCrystalWorldLocation());
 			BeamComponent->SetVariableFloat(FName(TEXT("User.mySpawnRate")), BeamForce);
 			BeamComponent->SetVariableFloat(FName(TEXT("User.myVortexForce")), BeamForce * 1.5f);
@@ -195,7 +196,6 @@ void AHarmonicStationActor::SetPressed(bool bNewPressed)
 		else
 		{
 			BeamComponent->SetVariableFloat(FName(TEXT("User.mySpawnRate")), 0.0f);
-			BeamComponent->Deactivate();
 		}
 	}
 
