@@ -64,7 +64,7 @@ public:
 	TObjectPtr<UNiagaraSystem> StationBeamSystem = nullptr;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Station|Config")
-	float BeamForce = 350.0f;
+	float SpawnRate = 350.0f;
 
 	UFUNCTION(BlueprintCallable, CallInEditor, Category = "Station|Config")
 	void ApplyDefaultPresetForIndex();
