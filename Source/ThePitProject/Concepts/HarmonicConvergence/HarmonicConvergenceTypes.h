@@ -22,3 +22,88 @@ enum class EVoiceTimbreProfile : uint8
 	CrystallineChime UMETA(DisplayName = "Crystalline Chime / Glass Marimba Pluck"),
 	VortexSweep UMETA(DisplayName = "Resonant Vortex Drone")
 };
+
+USTRUCT(BlueprintType)
+struct FStationVoiceConfig
+{
+	GENERATED_BODY()
+
+	// Hardware input OSC channel name (e.g. "player1", "player2")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Station Config")
+	FName ChannelName = NAME_None;
+
+	// Musical base frequency in Hertz played when this station is triggered
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Station Config")
+	float BaseFrequencyHz = 261.63f; // Default C4
+
+	// Synthesizer voice timbre character (WarmPad, SubBassPad, CrystallineChime, VortexSweep)
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Station Config")
+	EVoiceTimbreProfile TimbreProfile = EVoiceTimbreProfile::WarmPad;
+
+	// Visual beam stream color emitted toward center pit for Niagara particles
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Station Config")
+	FLinearColor StreamColor = FLinearColor(0.0f, 0.9f, 1.0f, 1.0f);
+
+	// Stereo pan position across the railing perimeter (-1.0 = Far Left, 0.0 = Center, +1.0 = Far Right)
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Station Config")
+	float PanPosition = 0.0f;
+
+	// Physical 3D world location of this station's button console (origin for Niagara beam ribbons)
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Station Config")
+	FVector WorldStationLocation = FVector::ZeroVector;
+
+	// 16-step rhythmic pattern bitmask (bits 0..15 corresponding to 16th-note steps in the 4/4 bar)
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Station Config")
+	int32 RhythmicPatternMask = 0x1111;
+
+	// Optional pre-rendered audio stem loop (.wav SoundWave).
+	// If assigned, this stem will loop in synchronized lockstep when the crystal is activated.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Station Config")
+	TObjectPtr<class USoundWave> AudioStemAsset = nullptr;
+
+	// If true, this station's crystal shard uses CustomCrystalLocation instead of the automatic center ring
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Station Config")
+	bool bUseCustomCrystalLocation = false;
+
+	// Custom position for this crystal (relative to manager actor in editor with 3D widget, or world space if set at runtime)
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Station Config", meta = (EditCondition = "bUseCustomCrystalLocation", MakeEditWidget = true))
+	FVector CustomCrystalLocation = FVector::ZeroVector;
+
+	// Custom 3D rotation for this crystal (if zero, automatically rotates towards station railing)
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Station Config", meta = (EditCondition = "bUseCustomCrystalLocation"))
+	FRotator CustomCrystalRotation = FRotator::ZeroRotator;
+
+	// Optional level actor reference (e.g. TargetPoint or placed mesh). If assigned, this actor's transform is used for the crystal.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Station Config")
+	TSoftObjectPtr<AActor> CrystalTargetActor = nullptr;
+};
+
+USTRUCT(BlueprintType)
+struct FVoiceRuntimeState
+{
+	GENERATED_BODY()
+
+	// Whether the station button is actively pressed / held down by a visitor
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Voice State")
+	bool bIsPressed = false;
+
+	// Continuous analog pressure amount (normalized 0.0 to 1.0)
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Voice State")
+	float CurrentPressure = 0.0f;
+
+	// Cumulative duration in seconds that the button has been held down continuously
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Voice State")
+	float CurrentHoldDuration = 0.0f;
+
+	// Dynamic modulation intensity (0.0 to 1.0) calculated from hold time curve and pressure
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Voice State")
+	float ModulationIntensity = 0.0f;
+
+	// Current active pitch frequency in Hertz (including any vibrato or scale shifts)
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Voice State")
+	float CurrentFrequency = 261.63f;
+
+	// Whether this station is currently in live Overcharge mode (visitor holding an already active crystal)
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Voice State")
+	bool bIsOvercharged = false;
+};

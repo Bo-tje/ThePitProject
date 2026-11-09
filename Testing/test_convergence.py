@@ -9,6 +9,7 @@ Usage:
   python3 test_convergence.py bass         # Test Sub-Bass Anchor stations
   python3 test_convergence.py chimes       # Test Crystalline High Chime stations
   python3 test_convergence.py random       # Simulate 20 festival-goers walking up and pressing buttons
+  python3 test_convergence.py shockwave    # Test 5-second hold -> Shockwave boom release
 """
 
 import sys
@@ -28,9 +29,11 @@ else:
     import termios
     import tty
 
+# --- Network & OSC Configuration ---
 OSC_TARGET_HOST = "127.0.0.1"
 OSC_TARGET_PORT = 8000
 
+# Event signal values
 STATION_BUTTON_PRESSED = 1.0
 STATION_BUTTON_RELEASED = 0.0
 
@@ -39,37 +42,60 @@ def build_osc_float_packet(channel_address: str, float_value: float) -> bytes:
     """Encodes an address and a 32-bit big-endian float value into standard OSC binary format."""
     if not channel_address.startswith('/'):
         channel_address = '/' + channel_address.replace('.', '/')
-
+    
+    # 4-byte null-padded address string
     address_bytes = channel_address.encode('ascii') + b'\x00'
     while len(address_bytes) % 4 != 0:
         address_bytes += b'\x00'
+        
+    # Type tag ',f' (null-padded to 4 bytes)
+    type_tag_bytes = b',f\x00\x00'
+    
+    # Big-endian 32-bit IEEE float payload
+    float_payload_bytes = struct.pack('>f', float(float_value))
+    
+    return address_bytes + type_tag_bytes + float_payload_bytes
 
-    return address_bytes + b',f\x00\x00' + struct.pack('>f', float(float_value))
+
+# Alias for backward compatibility
+make_osc_message = build_osc_float_packet
 
 
 def send_station_osc_event(station_channel_name: str, signal_value: float):
     """Sends a UDP OSC event packet to Unreal Engine for a specific station channel."""
-    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as udp_socket:
-        udp_socket.sendto(build_osc_float_packet(station_channel_name, signal_value), (OSC_TARGET_HOST, OSC_TARGET_PORT))
+    udp_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    packet_data = build_osc_float_packet(station_channel_name, signal_value)
+    udp_socket.sendto(packet_data, (OSC_TARGET_HOST, OSC_TARGET_PORT))
+    udp_socket.close()
 
     event_state_label = "PRESSED" if signal_value > 0.5 else "RELEASED"
     print(f"  🎵 [{station_channel_name:<9}] = {signal_value:4.1f} ({event_state_label})")
+
+
+# Alias for backward compatibility
+send_osc = send_station_osc_event
 
 
 def test_20_station_cascade():
     """Sequentially activates all 20 stations to test full orchestral harmonic convergence."""
     print("\n--- Testing 20-Station Ambient Symphony (Cascade) ---")
     for station_number in range(1, 21):
-        send_station_osc_event(f"player{station_number}", STATION_BUTTON_PRESSED)
+        station_channel_name = f"player{station_number}"
+        send_station_osc_event(station_channel_name, STATION_BUTTON_PRESSED)
         time.sleep(0.25)
 
     print("  ✨ All 20 stations active - full 5-octave symphony resonating in center...")
     time.sleep(3.5)
 
     for station_number in range(1, 21):
-        send_station_osc_event(f"player{station_number}", STATION_BUTTON_RELEASED)
+        station_channel_name = f"player{station_number}"
+        send_station_osc_event(station_channel_name, STATION_BUTTON_RELEASED)
         time.sleep(0.1)
     print("Done.\n")
+
+
+# Alias for backward compatibility
+test_chord = test_20_station_cascade
 
 
 def test_sub_bass_anchors():
@@ -87,10 +113,15 @@ def test_sub_bass_anchors():
     print("Done.\n")
 
 
+# Alias for backward compatibility
+test_bass = test_sub_bass_anchors
+
+
 def test_crystalline_chimes():
     """Tests the high sparkling chime stations (Stations 4, 7, 9, 12, 15, 18)."""
     print("\n--- Testing Tier 3 (Crystalline High Chimes: 4, 7, 9, 12, 15, 18) ---")
-    for station_id in [4, 7, 9, 12, 15, 18]:
+    high_chime_station_ids = [4, 7, 9, 12, 15, 18]
+    for station_id in high_chime_station_ids:
         station_channel_name = f"player{station_id}"
         send_station_osc_event(station_channel_name, STATION_BUTTON_PRESSED)
         time.sleep(0.3)
@@ -99,13 +130,18 @@ def test_crystalline_chimes():
     print("Done.\n")
 
 
+# Alias for backward compatibility
+test_chimes = test_crystalline_chimes
+
+
 def test_random_crowd_simulation():
     """Simulates 20 festival visitors walking up to random stations over 15 seconds."""
     print("\n--- Simulating 20 Festival-Goers Walking Up & Playing (15 Seconds) ---")
     active_station_ids = set()
     simulation_start_time = time.time()
+    simulation_duration_seconds = 15.0
 
-    while time.time() - simulation_start_time < 15.0:
+    while time.time() - simulation_start_time < simulation_duration_seconds:
         chosen_station_id = random.randint(1, 20)
         station_channel_name = f"player{chosen_station_id}"
 
@@ -118,9 +154,33 @@ def test_random_crowd_simulation():
 
         time.sleep(random.uniform(0.3, 0.8))
 
+    # Clean release for all active stations
     for active_id in list(active_station_ids):
         send_station_osc_event(f"player{active_id}", STATION_BUTTON_RELEASED)
     print("Festival simulation complete.\n")
+
+
+# Alias for backward compatibility
+test_random_festival = test_random_crowd_simulation
+
+
+def test_shockwave_hold_and_release():
+    """Tests the 5-second sustained hold required to trigger the sub-bass shockwave event on release."""
+    print("\n--- Testing Shockwave (>5s hold then release) ---")
+    test_station_channel = "player1"
+    send_station_osc_event(test_station_channel, STATION_BUTTON_PRESSED)
+
+    for remaining_seconds in range(5, 0, -1):
+        print(f"  Holding... {remaining_seconds}s remaining")
+        time.sleep(1.0)
+
+    print("  💥 Releasing button -> Shockwave Sub-Bass Impact & Ground Ripple Ring!")
+    send_station_osc_event(test_station_channel, STATION_BUTTON_RELEASED)
+    print("Done.\n")
+
+
+# Alias for backward compatibility
+test_shockwave = test_shockwave_hold_and_release
 
 
 def run_interactive_keyboard_controller():
@@ -128,8 +188,8 @@ def run_interactive_keyboard_controller():
     print("\n" + "=" * 65)
     print("  🎹 20-STATION INTERACTIVE HARMONIC CONVERGENCE KEYBOARD")
     print("  Keys 1-9, 0: Toggle stations 1-10")
-    print("  Keys a-j:    Toggle stations 11-20")
-    print("  'r' = Random Crowd | 'x' = All Off | 'q' = Quit")
+    print("  Keys a-k:   Toggle stations 11-20")
+    print("  'c' = Full 20-Chord | 'r' = Random Crowd | 'x' = All Off | 'q' = Quit")
     print("=" * 65)
 
     keyboard_to_station_map = {
@@ -165,7 +225,7 @@ def run_interactive_keyboard_controller():
             if not pressed_character:
                 continue
 
-            if pressed_character in ('q', '\x03'):
+            if pressed_character == 'q' or pressed_character == '\x03':
                 break
             elif pressed_character in keyboard_to_station_map:
                 target_channel = keyboard_to_station_map[pressed_character]
@@ -191,6 +251,10 @@ def run_interactive_keyboard_controller():
         print("\nAll 20 station voices released. Goodbye!\n")
 
 
+# Alias for backward compatibility
+interactive_mode = run_interactive_keyboard_controller
+
+
 if __name__ == "__main__":
     selected_mode = sys.argv[1].lower() if len(sys.argv) > 1 else "interactive"
     if selected_mode in ("chord", "cascade"):
@@ -201,5 +265,7 @@ if __name__ == "__main__":
         test_crystalline_chimes()
     elif selected_mode in ("random", "crowd"):
         test_random_crowd_simulation()
+    elif selected_mode in ("shockwave", "wave"):
+        test_shockwave_hold_and_release()
     else:
         run_interactive_keyboard_controller()
