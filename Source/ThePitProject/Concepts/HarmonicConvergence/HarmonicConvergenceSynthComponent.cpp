@@ -11,7 +11,6 @@ float FConvergenceVoiceDSP::GenerateSample(float SampleRate, float ChordMultipli
 
 	const float InvSampleRate = 1.0f / SampleRate;
 
-	// 1. Snappy Envelope: fast 60ms rise on button press, clean 120ms cutoff on release (no lingering drones)
 	if (bIsVoiceActive)
 	{
 		AmplitudeEnvelope = FMath::FInterpTo(AmplitudeEnvelope, 1.0f, InvSampleRate, 16.0f);
@@ -21,15 +20,13 @@ float FConvergenceVoiceDSP::GenerateSample(float SampleRate, float ChordMultipli
 		AmplitudeEnvelope = FMath::FInterpTo(AmplitudeEnvelope, 0.0f, InvSampleRate, 12.0f);
 	}
 
-	// 2. Rising Energy Capacitor Sweep Frequency
-	// Base frequency sweeps smoothly upward by +85% as beam pours energy into crystal, modulated by chord key
+	// Rising Energy Capacitor Sweep Frequency
 	const float ChargeRatio = FMath::Clamp(HoldModulationIntensity, 0.0f, 1.0f);
 	const float SweepMultiplier = 1.0f + 0.85f * FMath::Pow(ChargeRatio, 1.5f);
 	const float CurrentBeamFreqHz = NoteFrequencyHz * SweepMultiplier * ChordMultiplier;
 
 	// Electric flutter modulation (14 Hz plasma shimmer)
-	const float FlutterIncrement = (14.0f * 2.0f * PI) * InvSampleRate;
-	FlutterPhaseAngle += FlutterIncrement;
+	FlutterPhaseAngle += (14.0f * 2.0f * PI) * InvSampleRate;
 	if (FlutterPhaseAngle > 2.0f * PI) FlutterPhaseAngle -= 2.0f * PI;
 	const float ElectricFlutter = 1.0f + 0.15f * FMath::Sin(FlutterPhaseAngle);
 
@@ -39,21 +36,18 @@ float FConvergenceVoiceDSP::GenerateSample(float SampleRate, float ChordMultipli
 	HarmonicPhaseAngle += (CurrentBeamFreqHz * 2.0f * 2.0f * PI) * InvSampleRate;
 	if (HarmonicPhaseAngle > 2.0f * PI) HarmonicPhaseAngle -= 2.0f * PI;
 
-	// Focused Resonant Plasma Sound: fundamental + sparkling 2nd harmonic
 	const float PlasmaFundamental = FMath::Sin(CarrierPhaseAngle);
 	const float PlasmaHarmonic = FMath::Sin(HarmonicPhaseAngle) * 0.35f;
 
-	// Dynamic Charging Gain: builds from gentle hum (0.15) to energetic beam (0.45)
-	// Once crystal reaches full charge (1.0), beam ducks to 0.12 so the crystal drum rhythm dominates!
 	const float DuckingFactor = (ChargeRatio >= 0.99f) ? 0.15f : 1.0f;
 	const float ChargingGain = (0.15f + 0.30f * ChargeRatio) * DuckingFactor;
 
 	float MonoVoiceSample = (PlasmaFundamental * 0.7f + PlasmaHarmonic * 0.3f) * ElectricFlutter * ChargingGain * AmplitudeEnvelope;
 
-	// 3. Tactile Note-On Drum Pad Bite (~70ms crisp percussive transient)
+	// Tactile Note-On Drum Pad Bite (~70ms crisp percussive transient)
 	if (TransientEnvelope > 0.001f)
 	{
-		TransientEnvelope = FMath::FInterpTo(TransientEnvelope, 0.0f, InvSampleRate, 22.0f); // ~70ms bite
+		TransientEnvelope = FMath::FInterpTo(TransientEnvelope, 0.0f, InvSampleRate, 22.0f);
 		TransientPhaseAngle += (NoteFrequencyHz * 3.0f * 2.0f * PI) * InvSampleRate;
 		if (TransientPhaseAngle > 2.0f * PI) TransientPhaseAngle -= 2.0f * PI;
 
@@ -61,10 +55,10 @@ float FConvergenceVoiceDSP::GenerateSample(float SampleRate, float ChordMultipli
 		MonoVoiceSample += TactileBite;
 	}
 
-	// 4. Crystal Ignition Flash Strike (~250ms glass chime on 100% full charge)
+	// Crystal Ignition Flash Strike (~250ms glass chime on 100% full charge)
 	if (IgnitionEnvelope > 0.001f)
 	{
-		IgnitionEnvelope = FMath::FInterpTo(IgnitionEnvelope, 0.0f, InvSampleRate, 6.0f); // ~250ms ring
+		IgnitionEnvelope = FMath::FInterpTo(IgnitionEnvelope, 0.0f, InvSampleRate, 6.0f);
 		IgnitionPhaseAngle += (NoteFrequencyHz * 2.5f * 2.0f * PI) * InvSampleRate;
 		if (IgnitionPhaseAngle > 2.0f * PI) IgnitionPhaseAngle -= 2.0f * PI;
 
@@ -72,7 +66,6 @@ float FConvergenceVoiceDSP::GenerateSample(float SampleRate, float ChordMultipli
 		MonoVoiceSample += IgnitionChime;
 	}
 
-	// Equal-power stereo spatial panning
 	const float PanAngle = (StereoPanPosition + 1.0f) * 0.25f * PI;
 	OutLeftSample = MonoVoiceSample * FMath::Cos(PanAngle);
 	OutRightSample = MonoVoiceSample * FMath::Sin(PanAngle);
@@ -96,93 +89,58 @@ float FRhythmicPulseDSP::GenerateSample(float SampleRate, float ChordMultiplier,
 	{
 	case EVoiceTimbreProfile::SubBassPad:
 		{
-			if (bIsOvercharged)
-			{
-				// Overcharge: aggressive 808 club punch with saturated drive
-				Envelope = FMath::FInterpTo(Envelope, 0.0f, InvSampleRate, 3.8f);
-				PitchDecay = FMath::FInterpTo(PitchDecay, 0.0f, InvSampleRate, 18.0f);
-				const float KickFreqHz = 55.0f + 95.0f * PitchDecay;
-				PhaseAngle += (KickFreqHz * 2.0f * PI) * InvSampleRate;
-				if (PhaseAngle > 2.0f * PI) PhaseAngle -= 2.0f * PI;
+			Envelope = FMath::FInterpTo(Envelope, 0.0f, InvSampleRate, 5.5f);
+			PitchDecay = FMath::FInterpTo(PitchDecay, 0.0f, InvSampleRate, 26.0f);
 
-				const float SubSine = FMath::Sin(PhaseAngle);
-				const float Saturated = FMath::Tanh(SubSine * 1.5f);
-				MonoSample = Saturated * Envelope * SlotGain * 0.65f;
-			}
-			else
-			{
-				// Heartbeat Sub-Kick: fast pitch dive (110Hz -> 50Hz) and punchy 180ms decay
-				Envelope = FMath::FInterpTo(Envelope, 0.0f, InvSampleRate, 5.5f);
-				PitchDecay = FMath::FInterpTo(PitchDecay, 0.0f, InvSampleRate, 26.0f);
+			const float KickFreqHz = 50.0f + 60.0f * PitchDecay;
+			PhaseAngle += (KickFreqHz * 2.0f * PI) * InvSampleRate;
+			if (PhaseAngle > 2.0f * PI) PhaseAngle -= 2.0f * PI;
 
-				const float KickFreqHz = 50.0f + 60.0f * PitchDecay;
-				PhaseAngle += (KickFreqHz * 2.0f * PI) * InvSampleRate;
-				if (PhaseAngle > 2.0f * PI) PhaseAngle -= 2.0f * PI;
-
-				const float SubSine = FMath::Sin(PhaseAngle);
-				const float SubHarmonic = FMath::Sin(PhaseAngle * 2.0f) * 0.15f;
-				MonoSample = (SubSine + SubHarmonic) * Envelope * SlotGain * 0.50f;
-			}
+			const float SubSine = FMath::Sin(PhaseAngle);
+			const float SubHarmonic = FMath::Sin(PhaseAngle * 2.0f) * 0.15f;
+			MonoSample = (SubSine + SubHarmonic) * Envelope * SlotGain * 0.50f;
 		}
 		break;
 
 	case EVoiceTimbreProfile::CrystallineChime:
 		{
-			if (bIsOvercharged)
-			{
-				// Overcharge: rapid 32nd-note ratchet / snare roll fill
-				Envelope = FMath::FInterpTo(Envelope, 0.0f, InvSampleRate, 22.0f);
-				PhaseAngle += (BaseFrequencyHz * 2.2f * 2.0f * PI) * InvSampleRate;
-				if (PhaseAngle > 2.0f * PI) PhaseAngle -= 2.0f * PI;
+			Envelope = FMath::FInterpTo(Envelope, 0.0f, InvSampleRate, 12.0f);
+			PhaseAngle += (BaseFrequencyHz * 1.5f * 2.0f * PI) * InvSampleRate;
+			if (PhaseAngle > 2.0f * PI) PhaseAngle -= 2.0f * PI;
 
-				const float ChimeSample = FMath::Sin(PhaseAngle) * 0.7f + FMath::Sin(PhaseAngle * 3.14f) * 0.3f;
-				MonoSample = ChimeSample * Envelope * SlotGain * 0.42f;
-			}
-			else
-			{
-				// Glass Ping / Crisp Clock Tick: high frequency chime with 80ms decay
-				Envelope = FMath::FInterpTo(Envelope, 0.0f, InvSampleRate, 12.0f);
-
-				PhaseAngle += (BaseFrequencyHz * 1.5f * 2.0f * PI) * InvSampleRate;
-				if (PhaseAngle > 2.0f * PI) PhaseAngle -= 2.0f * PI;
-
-				const float ChimeSample = FMath::Sin(PhaseAngle) * 0.65f + FMath::Sin(PhaseAngle * 2.76f) * 0.25f + FMath::Sin(PhaseAngle * 5.4f) * 0.10f;
-				MonoSample = ChimeSample * Envelope * SlotGain * 0.28f;
-			}
+			const float ChimeSample = FMath::Sin(PhaseAngle) * 0.65f + FMath::Sin(PhaseAngle * 2.76f) * 0.25f + FMath::Sin(PhaseAngle * 5.4f) * 0.10f;
+			MonoSample = ChimeSample * Envelope * SlotGain * 0.28f;
 		}
 		break;
 
 	case EVoiceTimbreProfile::VortexSweep:
 		{
-			// Swirling Breath Pulse: gentle resonant swoosh with 200ms decay, transposed by chord
 			Envelope = FMath::FInterpTo(Envelope, 0.0f, InvSampleRate, 5.0f);
-			const float EffectiveFreq = BaseFrequencyHz * ChordMultiplier * (bIsOvercharged ? 1.5f : 1.0f);
+			const float EffectiveFreq = BaseFrequencyHz * ChordMultiplier;
 
 			PhaseAngle += (EffectiveFreq * 2.0f * PI) * InvSampleRate;
 			if (PhaseAngle > 2.0f * PI) PhaseAngle -= 2.0f * PI;
 
 			const float Swirl = FMath::Sin(PhaseAngle) * 0.7f + FMath::Sin(PhaseAngle * 1.5f) * 0.3f;
-			MonoSample = Swirl * Envelope * SlotGain * (bIsOvercharged ? 0.45f : 0.32f);
+			MonoSample = Swirl * Envelope * SlotGain * 0.32f;
 		}
 		break;
 
 	case EVoiceTimbreProfile::WarmPad:
 	default:
 		{
-			// Wooden Marimba / Kalimba Ping: warm organic click with 110ms decay, transposed by chord
-			Envelope = FMath::FInterpTo(Envelope, 0.0f, InvSampleRate, bIsOvercharged ? 6.0f : 9.0f);
-			const float EffectiveFreq = BaseFrequencyHz * ChordMultiplier * (bIsOvercharged ? 2.0f : 1.0f);
+			Envelope = FMath::FInterpTo(Envelope, 0.0f, InvSampleRate, 9.0f);
+			const float EffectiveFreq = BaseFrequencyHz * ChordMultiplier;
 
 			PhaseAngle += (EffectiveFreq * 2.0f * PI) * InvSampleRate;
 			if (PhaseAngle > 2.0f * PI) PhaseAngle -= 2.0f * PI;
 
 			const float WoodSample = FMath::Sin(PhaseAngle) * 0.78f + FMath::Sin(PhaseAngle * 3.0f) * 0.22f;
-			MonoSample = WoodSample * Envelope * SlotGain * (bIsOvercharged ? 0.50f : 0.35f);
+			MonoSample = WoodSample * Envelope * SlotGain * 0.35f;
 		}
 		break;
 	}
 
-	// Equal-power stereo spatial panning
 	const float PanAngle = (StereoPanPosition + 1.0f) * 0.25f * PI;
 	OutLeftSample = MonoSample * FMath::Cos(PanAngle);
 	OutRightSample = MonoSample * FMath::Sin(PanAngle);
@@ -193,7 +151,7 @@ float FRhythmicPulseDSP::GenerateSample(float SampleRate, float ChordMultiplier,
 UHarmonicConvergenceSynthComponent::UHarmonicConvergenceSynthComponent(const FObjectInitializer& ObjectInitializer)
 	: Super(ObjectInitializer)
 {
-	NumChannels = 2; // Stereo Output
+	NumChannels = 2;
 	bAutoActivate = true;
 }
 
@@ -209,14 +167,14 @@ bool UHarmonicConvergenceSynthComponent::Init(int32& SampleRate)
 	return true;
 }
 
-void UHarmonicConvergenceSynthComponent::NoteOn(int32 VoiceIndex, float NoteFrequencyHz, float StereoPan, EVoiceTimbreProfile TimbreProfile)
+void UHarmonicConvergenceSynthComponent::NoteOn(int32 VoiceIndex, float NoteFrequencyHz, float StereoPan)
 {
 	FScopeLock Lock(&AudioLock);
 	if (VoiceIndex >= 0 && VoiceIndex < MaxVoices)
 	{
 		Voices[VoiceIndex].NoteFrequencyHz = NoteFrequencyHz;
 		Voices[VoiceIndex].StereoPanPosition = FMath::Clamp(StereoPan, -1.0f, 1.0f);
-		Voices[VoiceIndex].NoteOn(TimbreProfile);
+		Voices[VoiceIndex].NoteOn();
 	}
 }
 
@@ -256,15 +214,6 @@ void UHarmonicConvergenceSynthComponent::TriggerVoiceIgnition(int32 VoiceIndex)
 	if (VoiceIndex >= 0 && VoiceIndex < MaxVoices)
 	{
 		Voices[VoiceIndex].TriggerIgnition();
-	}
-}
-
-void UHarmonicConvergenceSynthComponent::SetSlotOvercharge(int32 SlotIndex, bool bOvercharge)
-{
-	FScopeLock Lock(&AudioLock);
-	if (SlotIndex >= 0 && SlotIndex < MaxRhythmicSlots)
-	{
-		RhythmicSlots[SlotIndex].bIsOvercharged = bOvercharge;
 	}
 }
 
@@ -321,7 +270,6 @@ int32 UHarmonicConvergenceSynthComponent::OnGenerateAudio(float* OutAudio, int32
 	const int32 NumFrames = NumSamples / NumChannels;
 	const float InvSampleRate = 1.0f / CurrentSampleRate;
 
-	// Count active playing voices for dynamic 1 / sqrt(N) power scaling and peak hold modulation
 	int32 ActivePlayingVoiceCount = 0;
 	float MaxHoldModulation = 0.0f;
 	for (int32 VoiceIndex = 0; VoiceIndex < MaxVoices; ++VoiceIndex)
@@ -346,7 +294,6 @@ int32 UHarmonicConvergenceSynthComponent::OnGenerateAudio(float* OutAudio, int32
 			BeatClockPhase -= 1.0f;
 			CurrentBeatStep = (CurrentBeatStep + 1) % 16;
 
-			// Advance measure counter at the start of each 16-step bar (Step 0)
 			if (CurrentBeatStep == 0)
 			{
 				CurrentMeasureIndex++;
@@ -355,12 +302,11 @@ int32 UHarmonicConvergenceSynthComponent::OnGenerateAudio(float* OutAudio, int32
 					CurrentMeasureIndex = 0;
 					CurrentChordIndex = (CurrentChordIndex + 1) % 4;
 
-					// 4-Chord Progression (i -> VI -> III -> VII in A minor: Am, F, C, G)
-					static const float ChordScaleMultipliers[4] = {
+					static constexpr float ChordScaleMultipliers[4] = {
 						1.0000000f, // Am (Root)
-						0.7937005f, // F  (-4 semitones: 2^(-4/12))
-						1.1892071f, // C  (+3 semitones: 2^(3/12))
-						0.8908987f  // G  (-2 semitones: 2^(-2/12))
+						0.7937005f, // F  (-4 semitones)
+						1.1892071f, // C  (+3 semitones)
+						0.8908987f  // G  (-2 semitones)
 					};
 					TargetChordMultiplier = ChordScaleMultipliers[CurrentChordIndex];
 				}
@@ -369,25 +315,19 @@ int32 UHarmonicConvergenceSynthComponent::OnGenerateAudio(float* OutAudio, int32
 			const int32 StepBit = (1 << CurrentBeatStep);
 			for (int32 SlotIndex = 0; SlotIndex < MaxRhythmicSlots; ++SlotIndex)
 			{
-				if (RhythmicSlots[SlotIndex].bIsActive)
+				if (RhythmicSlots[SlotIndex].bIsActive && (RhythmicSlots[SlotIndex].RhythmicPatternMask & StepBit))
 				{
-					// Overcharge fills: if overcharged, combine pattern with rapid 8th-note ratchets (0x5555)
-					const int32 ActivePattern = RhythmicSlots[SlotIndex].bIsOvercharged ? (RhythmicSlots[SlotIndex].RhythmicPatternMask | 0x5555) : RhythmicSlots[SlotIndex].RhythmicPatternMask;
-					if (ActivePattern & StepBit)
-					{
-						RhythmicSlots[SlotIndex].Trigger();
-					}
+					RhythmicSlots[SlotIndex].Trigger();
 				}
 			}
 		}
 
-		// Smooth chord transposition to prevent audio clicks
 		CurrentChordMultiplier = FMath::FInterpTo(CurrentChordMultiplier, TargetChordMultiplier, InvSampleRate, 4.0f);
 
 		float AccumulatedLeftChannel = 0.0f;
 		float AccumulatedRightChannel = 0.0f;
 
-		// 1. Synthesize all 20+ Polyphonic Voices with dynamic gain staging
+		// 1. Synthesize Polyphonic Voices
 		for (int32 VoiceIndex = 0; VoiceIndex < MaxVoices; ++VoiceIndex)
 		{
 			float VoiceLeftSample = 0.0f;
@@ -398,8 +338,7 @@ int32 UHarmonicConvergenceSynthComponent::OnGenerateAudio(float* OutAudio, int32
 		}
 
 		// 2. Central Grounding Root Sub-Bass Drone (65.4 Hz C2) + Overdrive Sub-Octave (32.7 Hz C1)
-		const float DronePhaseIncrement = (65.41f * 2.0f * PI) * InvSampleRate;
-		RootSubBassDronePhaseAngle += DronePhaseIncrement;
+		RootSubBassDronePhaseAngle += (65.41f * 2.0f * PI) * InvSampleRate;
 		if (RootSubBassDronePhaseAngle > 2.0f * PI) RootSubBassDronePhaseAngle -= 2.0f * PI;
 
 		const float SubBassDroneSample = FMath::Sin(RootSubBassDronePhaseAngle) * (CurrentConvergenceEnergy * SubBassDroneVolume);
@@ -407,7 +346,7 @@ int32 UHarmonicConvergenceSynthComponent::OnGenerateAudio(float* OutAudio, int32
 		AccumulatedLeftChannel += (SubBassDroneSample + OverdriveSubSample);
 		AccumulatedRightChannel += (SubBassDroneSample + OverdriveSubSample);
 
-		// 3. Persistent Rhythmic Beat Slots with dynamic polyphonic headroom scaling
+		// 3. Persistent Rhythmic Beat Slots
 		int32 ActiveRhythmicSlotCount = 0;
 		for (int32 SlotIndex = 0; SlotIndex < MaxRhythmicSlots; ++SlotIndex)
 		{
@@ -460,8 +399,7 @@ int32 UHarmonicConvergenceSynthComponent::OnGenerateAudio(float* OutAudio, int32
 		if (AttractChimeEnvelope > 0.001f)
 		{
 			AttractChimeEnvelope = FMath::FInterpTo(AttractChimeEnvelope, 0.0f, InvSampleRate, 0.65f);
-			const float AttractPhaseIncrement = (AttractChimeFrequencyHz * 2.0f * PI) * InvSampleRate;
-			AttractChimePhaseAngle += AttractPhaseIncrement;
+			AttractChimePhaseAngle += (AttractChimeFrequencyHz * 2.0f * PI) * InvSampleRate;
 			if (AttractChimePhaseAngle > 2.0f * PI) AttractChimePhaseAngle -= 2.0f * PI;
 
 			const float ChimeSample = FMath::Sin(AttractChimePhaseAngle) * AttractChimeEnvelope * 0.25f;
@@ -475,30 +413,23 @@ int32 UHarmonicConvergenceSynthComponent::OnGenerateAudio(float* OutAudio, int32
 		const float ReverbFeedbackGain = 0.55f + 0.25f * FMath::Clamp(CurrentConvergenceEnergy * 0.4f, 0.0f, 1.0f) + OverdriveIntensity * 0.15f;
 		DiffusionTank.Process(AccumulatedLeftChannel, AccumulatedRightChannel, ReverbFeedbackGain, ReverbWetLeftSample, ReverbWetRightSample);
 
-		// Blend Dry + Reverb as convergence energy and overdrive build
 		const float ReverbWetMixRatio = 0.25f + 0.35f * FMath::Clamp(CurrentConvergenceEnergy * 0.5f, 0.0f, 1.0f) + OverdriveIntensity * 0.20f;
-		float FilterInputLeft = AccumulatedLeftChannel * (1.0f - ReverbWetMixRatio * 0.5f) + ReverbWetLeftSample * ReverbWetMixRatio;
-		float FilterInputRight = AccumulatedRightChannel * (1.0f - ReverbWetMixRatio * 0.5f) + ReverbWetRightSample * ReverbWetMixRatio;
+		const float FilterInputLeft = AccumulatedLeftChannel * (1.0f - ReverbWetMixRatio * 0.5f) + ReverbWetLeftSample * ReverbWetMixRatio;
+		const float FilterInputRight = AccumulatedRightChannel * (1.0f - ReverbWetMixRatio * 0.5f) + ReverbWetRightSample * ReverbWetMixRatio;
 
-		// 6. Dynamic Resonant Low-Pass Filter (Cutoff sweeps with hold modulation, convergence energy, and overdrive)
+		// 6. Dynamic Resonant Low-Pass Filter
 		const float FilterCutoffFrequencyHz = FMath::Clamp(FilterBaselineCutoffHz + MaxHoldModulation * 2400.0f + CurrentConvergenceEnergy * 5500.0f + OverdriveIntensity * 4500.0f, 150.0f, 18000.0f);
-		const float ResonanceQ = FilterResonanceQ;
+		const float FilteredOutputLeft = LeftChannelFilter.Process(FilterInputLeft, FilterCutoffFrequencyHz, FilterResonanceQ, CurrentSampleRate);
+		const float FilteredOutputRight = RightChannelFilter.Process(FilterInputRight, FilterCutoffFrequencyHz, FilterResonanceQ, CurrentSampleRate);
 
-		const float FilteredOutputLeft = LeftChannelFilter.Process(FilterInputLeft, FilterCutoffFrequencyHz, ResonanceQ, CurrentSampleRate);
-		const float FilteredOutputRight = RightChannelFilter.Process(FilterInputRight, FilterCutoffFrequencyHz, ResonanceQ, CurrentSampleRate);
-
-		// Output handling: Mono Downmix vs. Spatial Stereo
 		if (bMonoMode)
 		{
-			// Equal-power sum to guarantee 100% loudness and zero phase-drop on a single physical speaker
-			const float MonoDownmix = (FilteredOutputLeft + FilteredOutputRight) * 0.7071f;
-			const float SaturatedMonoSample = FMath::Tanh(MonoDownmix);
+			const float SaturatedMonoSample = FMath::Tanh((FilteredOutputLeft + FilteredOutputRight) * 0.7071f);
 			OutAudio[Frame * 2] = SaturatedMonoSample;
 			OutAudio[Frame * 2 + 1] = SaturatedMonoSample;
 		}
 		else
 		{
-			// Spatial Stereo for multi-speaker setups
 			OutAudio[Frame * 2] = FMath::Tanh(FilteredOutputLeft);
 			OutAudio[Frame * 2 + 1] = FMath::Tanh(FilteredOutputRight);
 		}
