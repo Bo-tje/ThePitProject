@@ -32,6 +32,22 @@ void AHarmonicCrystalActor::TriggerBeatPulse(float Intensity)
 	OnCrystalBeatPulse(Intensity, CrystalColor);
 }
 
+void AHarmonicCrystalActor::DeactivateCrystal()
+{
+	if (bIsActive || bIsCharging || ChargeProgress > 0.0f)
+	{
+		bIsCharging = false;
+		bIsActive = false;
+		bLifespanDecaying = true;
+		ChargeProgress = 0.0f;
+		RemainingLifespan = 0.0f;
+		PulseFlash = 0.0f;
+		OnCrystalCharge(0.0f, CrystalColor);
+		OnCrystalDeactivated();
+		OnCrystalExpiredEvent.Broadcast(this);
+	}
+}
+
 void AHarmonicCrystalActor::ResetCrystal()
 {
 	bIsCharging = false;

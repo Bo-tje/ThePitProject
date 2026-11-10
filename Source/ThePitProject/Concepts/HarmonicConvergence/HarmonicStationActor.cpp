@@ -42,37 +42,45 @@ void AHarmonicStationActor::ApplyDefaultPresetForIndex()
 		int32 PatternMask;
 	};
 
-	static const FStationPreset Presets[20] = {
-		// South Railing (0–6): Beats / Sub-Bass
+	static const FStationPreset Presets[24] = {
+		// Unit 1 (0–3): South Station - Beats / Sub-Bass
 		{ TEXT("player1"),  EVoiceTimbreProfile::SubBassPad,       FLinearColor(0.0f, 0.9f, 1.0f),  0x1111 },
 		{ TEXT("player2"),  EVoiceTimbreProfile::SubBassPad,       FLinearColor(0.0f, 0.6f, 1.0f),  0x0449 },
 		{ TEXT("player3"),  EVoiceTimbreProfile::SubBassPad,       FLinearColor(0.1f, 0.4f, 1.0f),  0x0101 },
 		{ TEXT("player4"),  EVoiceTimbreProfile::SubBassPad,       FLinearColor(0.0f, 0.8f, 0.9f),  0x4444 },
+
+		// Unit 2 (4–7): South-East Station - Bass & Percussive Groove
 		{ TEXT("player5"),  EVoiceTimbreProfile::SubBassPad,       FLinearColor(0.2f, 0.5f, 1.0f),  0x0481 },
 		{ TEXT("player6"),  EVoiceTimbreProfile::SubBassPad,       FLinearColor(0.0f, 1.0f, 0.8f),  0x2041 },
 		{ TEXT("player7"),  EVoiceTimbreProfile::SubBassPad,       FLinearColor(0.3f, 0.2f, 0.9f),  0x0905 },
-
-		// East Railing (7–9): Acoustic Percussion
 		{ TEXT("player8"),  EVoiceTimbreProfile::CrystallineChime, FLinearColor(1.0f, 0.6f, 0.0f),  0x1010 },
+
+		// Unit 3 (8–11): North-East Station - Acoustic Percussion & Chimes
 		{ TEXT("player9"),  EVoiceTimbreProfile::CrystallineChime, FLinearColor(0.9f, 0.8f, 0.1f),  0x5555 },
 		{ TEXT("player10"), EVoiceTimbreProfile::CrystallineChime, FLinearColor(1.0f, 0.45f, 0.1f), 0xAAAA },
-
-		// North Railing (10–16): Harmonic Warm Pads
 		{ TEXT("player11"), EVoiceTimbreProfile::WarmPad,          FLinearColor(0.9f, 0.1f, 0.5f),  0x4444 },
 		{ TEXT("player12"), EVoiceTimbreProfile::WarmPad,          FLinearColor(1.0f, 0.2f, 0.3f),  0x0001 },
+
+		// Unit 4 (12–15): North Station - Harmonic Warm Pads
 		{ TEXT("player13"), EVoiceTimbreProfile::WarmPad,          FLinearColor(0.8f, 0.1f, 0.8f),  0x4108 },
 		{ TEXT("player14"), EVoiceTimbreProfile::WarmPad,          FLinearColor(0.6f, 0.1f, 0.9f),  0x0410 },
 		{ TEXT("player15"), EVoiceTimbreProfile::WarmPad,          FLinearColor(1.0f, 0.3f, 0.6f),  0x1084 },
 		{ TEXT("player16"), EVoiceTimbreProfile::WarmPad,          FLinearColor(0.7f, 0.2f, 0.7f),  0x4040 },
-		{ TEXT("player17"), EVoiceTimbreProfile::WarmPad,          FLinearColor(0.9f, 0.4f, 0.2f),  0x0101 },
 
-		// West Railing (17–19): Melodic Leads & Chimes
+		// Unit 5 (16–19): North-West Station - Melodic Leads & Vortex Sweeps
+		{ TEXT("player17"), EVoiceTimbreProfile::WarmPad,          FLinearColor(0.9f, 0.4f, 0.2f),  0x0101 },
 		{ TEXT("player18"), EVoiceTimbreProfile::VortexSweep,      FLinearColor(0.1f, 1.0f, 0.4f),  0x0A28 },
 		{ TEXT("player19"), EVoiceTimbreProfile::CrystallineChime, FLinearColor(0.3f, 1.0f, 0.7f),  0x2492 },
-		{ TEXT("player20"), EVoiceTimbreProfile::VortexSweep,      FLinearColor(1.0f, 1.0f, 1.0f),  0xD000 }
+		{ TEXT("player20"), EVoiceTimbreProfile::VortexSweep,      FLinearColor(1.0f, 1.0f, 1.0f),  0xD000 },
+
+		// Unit 6 (20–23): South-West Station - Crystalline Resonances & Shimmers
+		{ TEXT("player21"), EVoiceTimbreProfile::CrystallineChime, FLinearColor(0.2f, 0.8f, 1.0f),  0x5050 },
+		{ TEXT("player22"), EVoiceTimbreProfile::WarmPad,          FLinearColor(0.9f, 0.5f, 1.0f),  0x0220 },
+		{ TEXT("player23"), EVoiceTimbreProfile::VortexSweep,      FLinearColor(1.0f, 0.8f, 0.3f),  0x1441 },
+		{ TEXT("player24"), EVoiceTimbreProfile::SubBassPad,       FLinearColor(0.3f, 1.0f, 0.5f),  0x8888 }
 	};
 
-	const int32 ClampedIdx = FMath::Clamp(StationIndex, 0, 19);
+	const int32 ClampedIdx = FMath::Clamp(StationIndex, 0, 23);
 	ChannelName = FName(Presets[ClampedIdx].Name);
 	TimbreProfile = Presets[ClampedIdx].Timbre;
 	StreamColor = Presets[ClampedIdx].Color;
@@ -180,9 +188,29 @@ void AHarmonicStationActor::SetPressed(bool bNewPressed)
 	bIsPressed = bNewPressed;
 	CurrentPressure = bIsPressed ? 1.0f : 0.0f;
 
-	if (CrystalActor)
+	const float CurrentTime = GetWorld() ? GetWorld()->GetTimeSeconds() : 0.0f;
+
+	if (bIsPressed)
 	{
-		CrystalActor->SetCharging(bIsPressed);
+		LastPressTimestamp = CurrentTime;
+		if (CrystalActor)
+		{
+			CrystalActor->SetCharging(true);
+		}
+	}
+	else
+	{
+		const float PressDuration = CurrentTime - LastPressTimestamp;
+
+		// TAP TO CUT: If crystal was already active and released after a quick tap, deactivate/cut it!
+		if (CrystalActor && CrystalActor->bIsActive && PressDuration > 0.02f && PressDuration <= TapCutMaxDurationSeconds)
+		{
+			CrystalActor->DeactivateCrystal();
+		}
+		else if (CrystalActor)
+		{
+			CrystalActor->SetCharging(false);
+		}
 	}
 
 	if (BeamComponent)

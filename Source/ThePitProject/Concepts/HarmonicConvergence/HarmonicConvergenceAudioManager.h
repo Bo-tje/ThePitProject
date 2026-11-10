@@ -52,7 +52,11 @@ public:
 	void SetMasterBPM(float NewBPM);
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Harmonics|Beat")
-	int32 MaxActiveCrystals = 20;
+	int32 MaxActiveCrystals = 12;
+
+	// Maximum active crystals allowed per physical station unit (4 buttons per station)
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Harmonics|Beat", meta = (ClampMin = "1", ClampMax = "4"))
+	int32 MaxActiveCrystalsPerStation = 2;
 
 	// --- Attract & Overdrive ---
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Harmonics|Attract")

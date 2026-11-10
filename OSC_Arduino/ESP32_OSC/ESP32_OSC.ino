@@ -1,182 +1,164 @@
-// --- The Pit Project: Scalable ESP32 Controller ---
-// Core: ESP-WROOM-32 with native Wi-Fi
-// Feature: Scalable Station table, Baolian Marquee Protocol Driver, Bidirectional OSC
+// ============================================================================
+// THE PIT PROJECT: 4-BUTTON STATION CONTROLLER (ESP32)
+// ============================================================================
+// Hardware:
+//  - ESP-WROOM-32 (Station Unit 1 to 6)
+//  - 4x Arcade Microswitch Buttons arranged in a straight line
+//  - 4x 12V LEDs mounted inside the microswitches, driven via MOSFET board (PWM)
+//
+// Features:
+//  - Zero-latency local 60 FPS lighting engine with 256-step perceptual Gamma curve
+//  - Alternating Attract Modes: Smooth Comet Ping-Pong & Inward-Outward Accordion
+//  - Autonomous "Ghost Player" Demo Bursts to attract passersby in the room
+//  - Siphon Focus & Hold-to-Charge crystal mechanic with energetic shimmer
+//  - Crystal Lock with music beat-pulse & multi-button stem stacking
+//  - Reliable OSC snapshot transport (/pit/unitX/inputs) with ACK & battery saver
+// ============================================================================
 
 #include <WiFi.h>
 #include <WiFiUdp.h>
 #include <OSCMessage.h>
+#include <esp_arduino_version.h>
 
 // ============================================================================
-// 1. Wi-Fi & Network Configuration
+// 1. Station Identity & Network Configuration
 // ============================================================================
-const bool DEBUG_OFFLINE_MODE = false; // Set to true to test buttons & LEDs without Wi-Fi
+// Change UNIT_ID for each physical station (1 through 6)
+const int UNIT_ID = 1; 
+
+const bool DEBUG_OFFLINE_MODE = true; // Set true for bench testing without Wi-Fi
 
 char ssid[] = "HarmonicInstallation";              // Wi-Fi SSID
 char pass[] = "Boislief45";                   // Wi-Fi Password
 
-IPAddress outIp(192, 168, 0, 100);            // Target PC IP on network
-const unsigned int outPort = 8000;  // Unreal Engine OSC Server Port
-const unsigned int inPort  = 8888;  // Local Port for Incoming Game State
+IPAddress outIp(192, 168, 0, 100);            // Target PC (Unreal Engine) IP
+const unsigned int outPort = 8000;            // Unreal Engine OSC Server Port
+const unsigned int inPort  = 8888;            // Local Port for Incoming Game State & Sync
 
 WiFiUDP Udp;
 
 // ============================================================================
-// 2. Baolian LED_D V3.1 Working Protocol Commands
+// 2. Hardware Pinout & Timing Configuration
 // ============================================================================
-#define CMD_BREATHING     0x00  // Multi-color breathing fade
-#define CMD_BLUE          0x01  // Solid Blue
-#define CMD_RED           0x02  // Solid Red
-#define CMD_GREEN         0x03  // Solid Green
-#define CMD_PURPLE        0x04  // Station 3 (Magenta / Purple)
-#define CMD_CYAN          0x05  // Station 1 (Cyan / Sky Blue)
-#define CMD_YELLOW        0x06  // Station 2 (Amber / Yellow)
-#define CMD_WHITE         0x07  // Solid White
-#define CMD_JUMP          0x08  // Color jump
-#define CMD_MARQUEE       0x09  // Rotating rainbow chase
-#define CMD_ALWAYS_ON     0x10  // Solid on
-#define CMD_OFF           0x11  // Off
+// 4 Microswitch inputs (Internal pullup to GND when pressed)
+const int BTN_PINS[4] = { 18, 19, 21, 22 };
 
-// --- Mode Mapping ---
-#define CMD_ATTRACT_RAINBOW   CMD_MARQUEE    // 0x09: Rotating rainbow pattern in Attract
-#define CMD_BREATHING_MODE    CMD_BREATHING  // 0x00: Breathing light mode upon press/release
+// 4 MOSFET Gate control pins (PWM driven)
+const int LED_PINS[4] = { 25, 26, 27, 32 };
 
-// --- Configurable State Delays ---
-const unsigned long HOLD_TO_SOLID_MS       = 2500; // Hold button for 2.5s -> goes to Solid Color
-const unsigned long RELEASE_TO_ATTRACT_MS   = 6000; // After release, wait 6.0s idle -> goes to Attract Rainbow
+// PWM Setup (5 kHz = high-speed, silent, zero-flicker)
+const int PWM_FREQ       = 5000;
+const int PWM_RESOLUTION = 8;     // 8-bit resolution (0 - 255)
+const int PWM_CHANNELS[4] = { 0, 1, 2, 3 };
+
+// --- Gameplay & Interaction Timings ---
+const unsigned long DEBOUNCE_MS          = 25;    // Button debounce window
+const unsigned long CHARGE_TIME_MS       = 2000;  // Hold duration to fully charge crystal (2.0s)
+const unsigned long FLASH_DURATION_MS    = 120;   // Bright lock flash duration on full charge
+const unsigned long DECAY_TIME_MS        = 350;   // Early release fizzle/decay duration
+const unsigned long IDLE_TO_ATTRACT_MS   = 4000;  // Idle wait after release before returning to Attract
+
+// --- Active Crystal & Deactivation Limits (Tunable Variables) ---
+int maxActivePerStation                  = 2;     // Maximum active stems on this 4-button station (set 1 to 4)
+const unsigned long TAP_CUT_MAX_MS       = 400;   // Max press duration to trigger Tap-to-Cut on an active button
+
+// --- Attract Mode Cycle Timings ---
+const unsigned long ATTRACT_CYCLE_MS     = 16000; // Switch between Comet and In-Out every 16 seconds
+const unsigned long DEMO_TRIGGER_IDLE_MS = 32000; // Trigger "Ghost Player" demo burst every 32s of pure idle
 
 // ============================================================================
-// 3. Scalable Station Table
+// 3. Perceptual Gamma Correction Table (gamma = 2.4)
 // ============================================================================
-struct Station {
-  int btnPin;                   // KEY wire (INPUT_PULLUP to GND)
-  int ledPin;                   // Status LED (-1 if none)
-  int dataPin;                  // DAT pin for Baolian ring (-1 if none)
-  int clockPin;                 // CLK pin for Baolian ring (-1 if none)
-  uint8_t colorCmd;             // Station assigned solid color command
-  const char* oscPath;          // OSC address (e.g. /player1)
-  int lastState;                // Debounce tracker
-  unsigned long lastDebounce;
+// Maps linear 0-255 brightness values to logarithmic human eye perception
+const uint8_t PROGMEM GAMMA_LUT[256] = {
+    0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,
+    1,   1,   1,   1,   1,   1,   1,   1,   1,   2,   2,   2,   2,   2,   2,   3,
+    3,   3,   3,   3,   4,   4,   4,   4,   5,   5,   5,   5,   6,   6,   6,   7,
+    7,   7,   8,   8,   8,   9,   9,   9,  10,  10,  11,  11,  11,  12,  12,  13,
+   13,  14,  14,  15,  15,  16,  16,  17,  17,  18,  18,  19,  19,  20,  21,  21,
+   22,  22,  23,  24,  24,  25,  26,  26,  27,  28,  28,  29,  30,  31,  31,  32,
+   33,  34,  34,  35,  36,  37,  38,  38,  39,  40,  41,  42,  43,  44,  45,  46,
+   47,  48,  49,  50,  51,  52,  53,  54,  55,  56,  57,  58,  59,  60,  61,  62,
+   64,  65,  66,  67,  68,  70,  71,  72,  73,  75,  76,  77,  79,  80,  81,  83,
+   84,  85,  87,  88,  90,  91,  93,  94,  96,  97,  99, 100, 102, 103, 105, 107,
+  108, 110, 112, 113, 115, 117, 119, 120, 122, 124, 126, 128, 130, 131, 133, 135,
+  137, 139, 141, 143, 145, 147, 149, 152, 154, 156, 158, 160, 163, 165, 167, 169,
+  172, 174, 176, 179, 181, 184, 186, 189, 191, 194, 196, 199, 201, 204, 207, 209,
+  212, 215, 217, 220, 223, 226, 228, 231, 234, 237, 240, 243, 246, 249, 252, 255
+};
+
+// ============================================================================
+// 4. Data Structures & State Management
+// ============================================================================
+enum ButtonLightMode {
+  LIGHT_ATTRACT,       // Ambient wave/comet
+  LIGHT_CHARGING,      // Button held, ramp up with energy rumble
+  LIGHT_LOCKED_ACTIVE, // Reached 100% charge, active stem with beat pulse
+  LIGHT_DECAY          // Early release before 100%, fast fizzle
+};
+
+struct ButtonStation {
+  int btnPin;
+  int ledPin;
+  int pwmChannel;
+
+  // Debouncing
+  int lastRawState;
+  unsigned long lastDebounceTime;
   bool isPressed;
+
+  // Interaction State
+  ButtonLightMode lightMode;
   unsigned long pressStartTime;
+  unsigned long releaseTime;
+  unsigned long lockTime;
+  float currentBrightness; // 0.0 to 1.0 (linear)
+  float targetBrightness;
 };
 
-// Physical Station Configuration (ESP32 Pins):
-// Station 1: Button on GPIO 4, Status LED on GPIO 2, Baolian Ring on GPIO 22 (DAT) and GPIO 23 (CLK)
-// Station 2: Button on GPIO 19 (Tactile button only)
-// Station 3: Button on GPIO 21 (Tactile button only)
-Station STATIONS[] = {
-  {  4,  2, 22, 23, CMD_CYAN,   "/player1", HIGH, 0, false, 0 }, // Station 1 (Baolian Ring + Status LED)
-  { 19, -1, -1, -1, CMD_YELLOW, "/player2", HIGH, 0, false, 0 }, // Station 2 (Tactile button only)
-  { 21, -1, -1, -1, CMD_PURPLE, "/player3", HIGH, 0, false, 0 }  // Station 3 (Tactile button only)
+ButtonStation BUTTONS[4];
+
+// Global Installation State
+enum GlobalState {
+  STATE_ATTRACT_MODE,
+  STATE_INTERACTIVE_MODE
 };
-const int NUM_STATIONS = sizeof(STATIONS) / sizeof(STATIONS[0]);
-const unsigned long DEBOUNCE_MS = 30;
+GlobalState globalState = STATE_ATTRACT_MODE;
 
-// Hardware Unit & Reliable OSC Protocol Configuration
-const int UNIT_ID = 1;
-const char* UNIT_OSC_PATH = "/pit/unit1/inputs";
-
-uint32_t currentSequence = 1; // Increments on every state change
-uint32_t lastAckedSequence = 0;
-bool needsAck = true; // Send initial state upon boot until ACKed
-unsigned long lastSendTime = 0;
-int retryCount = 0;
-
-const unsigned long RETRY_INTERVAL_MS = 40; // Low-latency retry interval (40ms)
-const int MAX_RETRIES = 50;                 // 50 * 40ms = 2.0s maximum attempt window to preserve battery
+unsigned long lastGlobalActivityTime = 0;
+unsigned long attractPhaseStartTime  = 0;
+unsigned long lastBeatTickTime        = 0;
+int demoActiveButton                  = -1;
+unsigned long demoStartTime           = 0;
 
 // ============================================================================
-// 4. Low-Level Marquee Protocol Driver
+// 5. Reliable OSC Transport (State Snapshot & ACK Protocol)
 // ============================================================================
-unsigned long lastCmdTime = 0;
-uint8_t currentRingCmd = 0xFF; // Prevents re-sending identical commands
+char unitOscPath[32];
+uint32_t currentSequence    = 1;
+uint32_t lastAckedSequence  = 0;
+bool needsAck               = true;
+unsigned long lastSendTime  = 0;
+int retryCount              = 0;
 
-void sendMarqueeCommand(int dataPin, int clockPin, uint8_t cmd) {
-  if (dataPin < 0 || clockPin < 0) return;
+const unsigned long RETRY_INTERVAL_MS = 40;
+const int MAX_RETRIES                 = 50; // 2.0 seconds maximum attempt window
 
-  // Ensure CLK has been HIGH for >= 250ms since last transmission (Datasheet spec)
-  unsigned long elapsed = millis() - lastCmdTime;
-  if (elapsed < 260) {
-    delay(260 - elapsed);
-  }
-
-  // Transmit 8 bits MSB first (B7 to B0)
-  for (int i = 7; i >= 0; i--) {
-    // CLK goes LOW for > 1ms while data is set
-    digitalWrite(clockPin, LOW);
-    digitalWrite(dataPin, (cmd & (1 << i)) ? HIGH : LOW);
-    delayMicroseconds(1500); // 1.5ms (> 1ms spec)
-
-    // CLK goes HIGH for > 1ms (chip latches on rising edge)
-    digitalWrite(clockPin, HIGH);
-    delayMicroseconds(1500); // 1.5ms (> 1ms spec)
-  }
-
-  digitalWrite(dataPin, LOW);
-  digitalWrite(clockPin, HIGH); // CLK idles HIGH
-  lastCmdTime = millis();
-}
-
-void setRingMode(int dataPin, int clockPin, uint8_t cmd) {
-  if (cmd == currentRingCmd) return; // Only transmit on real state change
-  sendMarqueeCommand(dataPin, clockPin, cmd);
-  currentRingCmd = cmd;
-}
-
-// ============================================================================
-// 5. High-Level Ring State Machine
-// ============================================================================
-enum PitState {
-  STATE_ATTRACT,
-  STATE_ACTIVE
-};
-PitState currentState = STATE_ATTRACT;
-
-// Ring sequence tracking
-bool isSolidActive = false;
-bool isWaitingForAttract = false;
-unsigned long lastReleaseTime = 0;
-
-void setStationRingState(int stationIdx) {
-  if (stationIdx < 0 || stationIdx >= NUM_STATIONS) return;
-  int dPin = STATIONS[stationIdx].dataPin;
-  int cPin = STATIONS[stationIdx].clockPin;
-  if (dPin < 0 || cPin < 0) return;
-
-  if (currentState == STATE_ATTRACT) {
-    setRingMode(dPin, cPin, CMD_ATTRACT_RAINBOW);
-  } else if (STATIONS[stationIdx].isPressed) {
-    if (isSolidActive) {
-      setRingMode(dPin, cPin, STATIONS[stationIdx].colorCmd);
-    } else {
-      setRingMode(dPin, cPin, CMD_BREATHING_MODE);
-    }
-  } else {
-    // Active but released
-    setRingMode(dPin, cPin, CMD_BREATHING_MODE);
-  }
-}
-
-// ============================================================================
-// 6. Reliable OSC Transport (State Snapshot & ACK Protocol)
-// ============================================================================
 void sendStatePacket() {
   uint8_t packet[96];
   int len = 0;
 
-  // 1. OSC Address (4-byte null padded)
-  int addrLen = strlen(UNIT_OSC_PATH);
-  memcpy(&packet[len], UNIT_OSC_PATH, addrLen);
+  // 1. OSC Address (e.g. "/pit/unit1/inputs")
+  int addrLen = strlen(unitOscPath);
+  memcpy(&packet[len], unitOscPath, addrLen);
   len += addrLen;
   packet[len++] = '\0';
   while (len % 4 != 0) packet[len++] = '\0';
 
-  // 2. OSC Type Tags: ",i" + "f" * NUM_STATIONS (4-byte null padded)
+  // 2. OSC Type Tags: ",i" + 4x "f"
   packet[len++] = ',';
   packet[len++] = 'i';
-  for (int i = 0; i < NUM_STATIONS; i++) {
-    packet[len++] = 'f';
-  }
+  for (int i = 0; i < 4; i++) packet[len++] = 'f';
   packet[len++] = '\0';
   while (len % 4 != 0) packet[len++] = '\0';
 
@@ -186,10 +168,10 @@ void sendStatePacket() {
   packet[len++] = (currentSequence >> 8) & 0xFF;
   packet[len++] = currentSequence & 0xFF;
 
-  // 4. Button states (float big-endian IEEE 754)
-  for (int i = 0; i < NUM_STATIONS; i++) {
+  // 4. Button states (4x float big-endian)
+  for (int i = 0; i < 4; i++) {
     union { float f; uint8_t b[4]; } u;
-    u.f = STATIONS[i].isPressed ? 1.0f : 0.0f;
+    u.f = BUTTONS[i].isPressed ? 1.0f : 0.0f;
     packet[len++] = u.b[3];
     packet[len++] = u.b[2];
     packet[len++] = u.b[1];
@@ -202,14 +184,14 @@ void sendStatePacket() {
     Udp.endPacket();
   }
 
-  Serial.print(DEBUG_OFFLINE_MODE ? ">>> [DEBUG OSC (Offline)] " : ">>> [OSC Sent] ");
-  Serial.print(UNIT_OSC_PATH);
+  Serial.print(DEBUG_OFFLINE_MODE ? ">>> [OFFLINE OSC] " : ">>> [OSC Sent] ");
+  Serial.print(unitOscPath);
   Serial.print(" seq=");
   Serial.print(currentSequence);
   Serial.print(" states=[");
-  for (int i = 0; i < NUM_STATIONS; i++) {
-    Serial.print(STATIONS[i].isPressed ? "1" : "0");
-    if (i < NUM_STATIONS - 1) Serial.print(", ");
+  for (int i = 0; i < 4; i++) {
+    Serial.print(BUTTONS[i].isPressed ? "1" : "0");
+    if (i < 3) Serial.print(", ");
   }
   Serial.print("] (retry=");
   Serial.print(retryCount);
@@ -225,94 +207,305 @@ void triggerStateChange() {
 }
 
 // ============================================================================
-// 7. Setup
+// 6. Low-Level PWM Hardware Driver
+// ============================================================================
+void writePwmDuty(int idx, uint8_t duty) {
+#if defined(ESP_ARDUINO_VERSION_MAJOR) && (ESP_ARDUINO_VERSION_MAJOR >= 3)
+  ledcWrite(BUTTONS[idx].ledPin, duty);
+#else
+  ledcWrite(BUTTONS[idx].pwmChannel, duty);
+#endif
+}
+
+void applyLedLinear(int idx, float linearBrightness) {
+  // Clamp 0.0 to 1.0
+  if (linearBrightness < 0.0f) linearBrightness = 0.0f;
+  if (linearBrightness > 1.0f) linearBrightness = 1.0f;
+  
+  uint8_t index = (uint8_t)(linearBrightness * 255.0f);
+  uint8_t gammaDuty = pgm_read_byte(&GAMMA_LUT[index]);
+  writePwmDuty(idx, gammaDuty);
+}
+
+// ============================================================================
+// 7. High-Level Animation & Lighting Engine
+// ============================================================================
+void updateLighting(unsigned long now) {
+  // Check if any button is currently being pressed or actively held
+  bool anyPressed = false;
+  bool anyLocked  = false;
+  for (int i = 0; i < 4; i++) {
+    if (BUTTONS[i].isPressed) anyPressed = true;
+    if (BUTTONS[i].lightMode == LIGHT_LOCKED_ACTIVE) anyLocked = true;
+  }
+
+  if (anyPressed || anyLocked) {
+    globalState = STATE_INTERACTIVE_MODE;
+    demoActiveButton = -1; // Cancel any autonomous demo
+  } else if (globalState == STATE_INTERACTIVE_MODE) {
+    if (now - lastGlobalActivityTime >= IDLE_TO_ATTRACT_MS) {
+      globalState = STATE_ATTRACT_MODE;
+      attractPhaseStartTime = now;
+      for (int i = 0; i < 4; i++) BUTTONS[i].lightMode = LIGHT_ATTRACT;
+      Serial.println("[State] Entering ATTRACT MODE");
+    }
+  }
+
+  // --- ATTRACT MODE RENDERING ---
+  if (globalState == STATE_ATTRACT_MODE) {
+    unsigned long idleDuration = now - lastGlobalActivityTime;
+
+    // Check Autonomous "Ghost Player" Demo Trigger
+    if (idleDuration >= DEMO_TRIGGER_IDLE_MS && demoActiveButton < 0) {
+      demoActiveButton = random(0, 4);
+      demoStartTime = now;
+      Serial.print("[Demo] Triggering Ghost Player Demo on Button ");
+      Serial.println(demoActiveButton + 1);
+    }
+
+    if (demoActiveButton >= 0) {
+      // Run Ghost Demo Sequence: 1.8s charge ramp -> 200ms flash -> 800ms fadeout
+      unsigned long demoElapsed = now - demoStartTime;
+      if (demoElapsed < 1800) {
+        float ramp = (float)demoElapsed / 1800.0f;
+        for (int i = 0; i < 4; i++) {
+          applyLedLinear(i, (i == demoActiveButton) ? (ramp * ramp) : (1.0f - ramp) * 0.05f);
+        }
+      } else if (demoElapsed < 2000) {
+        // Flash!
+        for (int i = 0; i < 4; i++) {
+          applyLedLinear(i, (i == demoActiveButton) ? 1.0f : 0.0f);
+        }
+      } else if (demoElapsed < 2800) {
+        float fade = 1.0f - ((float)(demoElapsed - 2000) / 800.0f);
+        for (int i = 0; i < 4; i++) {
+          applyLedLinear(i, (i == demoActiveButton) ? (fade * 0.7f) : 0.0f);
+        }
+      } else {
+        // Demo finished, return to ambient attract
+        demoActiveButton = -1;
+        lastGlobalActivityTime = now; // Reset idle timer
+      }
+      return;
+    }
+
+    // Alternating Ambient Wave: Comet Ping-Pong vs Inward-Outward Pulse
+    unsigned long attractElapsed = now - attractPhaseStartTime;
+    bool isCometPhase = ((attractElapsed / ATTRACT_CYCLE_MS) % 2) == 0;
+
+    if (isCometPhase) {
+      // --- PATTERN 1: COMET PING-PONG (0 -> 1 -> 2 -> 3 -> 2 -> 1) ---
+      float cycle = fmod((float)now / 350.0f, 6.0f);
+      float cometPos = (cycle <= 3.0f) ? cycle : (6.0f - cycle); // 0.0 to 3.0 ping pong
+
+      for (int i = 0; i < 4; i++) {
+        float dist = fabs((float)i - cometPos);
+        // Gaussian falloff
+        float brightness = expf(-dist * dist * 1.8f);
+        applyLedLinear(i, brightness * 0.85f);
+      }
+    } else {
+      // --- PATTERN 2: INWARD-OUTWARD ACCORDION PULSE ---
+      // Outer buttons (0 & 3) swell, then inner buttons (1 & 2) swell
+      float wave = (sinf((float)now * 0.0035f) + 1.0f) * 0.5f; // 0.0 to 1.0
+      float outer = wave;
+      float inner = 1.0f - wave;
+
+      applyLedLinear(0, outer * 0.8f);
+      applyLedLinear(1, inner * 0.8f);
+      applyLedLinear(2, inner * 0.8f);
+      applyLedLinear(3, outer * 0.8f);
+    }
+    return;
+  }
+
+  // --- INTERACTIVE / GAMEPLAY RENDERING ---
+  for (int i = 0; i < 4; i++) {
+    switch (BUTTONS[i].lightMode) {
+      case LIGHT_CHARGING: {
+        unsigned long holdDuration = now - BUTTONS[i].pressStartTime;
+        float progress = (float)holdDuration / (float)CHARGE_TIME_MS;
+        if (progress > 1.0f) progress = 1.0f;
+
+        // Subtle energetic shimmer/vibration that intensifies as charge nears 100%
+        float shimmer = sinf((float)now * 0.045f) * (0.08f * progress);
+        float currentB = (progress * progress) + shimmer;
+        if (currentB < 0.0f) currentB = 0.0f;
+        if (currentB > 1.0f) currentB = 1.0f;
+        applyLedLinear(i, currentB);
+
+        // Check if full charge reached (Step 2: Lock)
+        if (holdDuration >= CHARGE_TIME_MS) {
+          // If already at maxActivePerStation, auto-swap the oldest active crystal
+          int activeCount = 0;
+          int oldestIdx = -1;
+          unsigned long oldestLockTime = 0xFFFFFFFF;
+
+          for (int j = 0; j < 4; j++) {
+            if (BUTTONS[j].lightMode == LIGHT_LOCKED_ACTIVE) {
+              activeCount++;
+              if (BUTTONS[j].lockTime < oldestLockTime) {
+                oldestLockTime = BUTTONS[j].lockTime;
+                oldestIdx = j;
+              }
+            }
+          }
+
+          if (activeCount >= maxActivePerStation && oldestIdx >= 0) {
+            BUTTONS[oldestIdx].lightMode = LIGHT_DECAY;
+            Serial.print("[Capacity] Max active (");
+            Serial.print(maxActivePerStation);
+            Serial.print(") reached -> Swapping oldest Button ");
+            Serial.println(oldestIdx + 1);
+          }
+
+          BUTTONS[i].lightMode = LIGHT_LOCKED_ACTIVE;
+          BUTTONS[i].lockTime = now;
+          Serial.print("[Charge Complete] Button ");
+          Serial.print(i + 1);
+          Serial.println(" -> CRYSTAL LOCKED ACTIVE!");
+        }
+        break;
+      }
+
+      case LIGHT_LOCKED_ACTIVE: {
+        // Step 3: Crystal Locked. Initial flash, then steady glow with beat pulse
+        unsigned long timeSinceLock = now - BUTTONS[i].lockTime;
+        if (timeSinceLock < FLASH_DURATION_MS) {
+          applyLedLinear(i, 1.0f); // Peak flash!
+        } else {
+          // Ambient active glow (70%) + musical beat pulse
+          float beatDecay = 0.0f;
+          if (lastBeatTickTime > 0) {
+            unsigned long beatElapsed = now - lastBeatTickTime;
+            if (beatElapsed < 250) {
+              beatDecay = (1.0f - ((float)beatElapsed / 250.0f)) * 0.30f;
+            }
+          } else {
+            // Local fallback 120 BPM beat pulse if no OSC clock received
+            float localBeat = fmod((float)now, 500.0f) / 500.0f;
+            if (localBeat < 0.35f) {
+              beatDecay = (1.0f - (localBeat / 0.35f)) * 0.20f;
+            }
+          }
+          applyLedLinear(i, 0.70f + beatDecay);
+        }
+        break;
+      }
+
+      case LIGHT_DECAY: {
+        // Early release fizzle out over DECAY_TIME_MS
+        unsigned long decayElapsed = now - BUTTONS[i].releaseTime;
+        if (decayElapsed < DECAY_TIME_MS) {
+          float decay = 1.0f - ((float)decayElapsed / (float)DECAY_TIME_MS);
+          applyLedLinear(i, decay * 0.5f);
+        } else {
+          BUTTONS[i].lightMode = LIGHT_ATTRACT;
+          applyLedLinear(i, 0.0f);
+        }
+        break;
+      }
+
+      case LIGHT_ATTRACT:
+      default: {
+        // When other buttons are actively locked, unpressed buttons have a subtle "ready" glow
+        if (anyLocked) {
+          applyLedLinear(i, 0.08f); // 8% dim ready guide
+        } else {
+          // Siphoned to zero during active charge of sibling
+          applyLedLinear(i, 0.0f);
+        }
+        break;
+      }
+    }
+  }
+}
+
+// ============================================================================
+// 8. Setup
 // ============================================================================
 void setup() {
-  // Power Optimization 1: Clock down from 240 MHz to 80 MHz
-  // Drops CPU baseline current by ~40mA while remaining nearly 2x faster than the Nano 33 IoT
-  setCpuFrequencyMhz(80);
+  // Power Optimizations
+  setCpuFrequencyMhz(80); // Drop baseline power draw while keeping 80MHz performance
+  btStop();               // Disable Bluetooth hardware completely
 
-  // Power Optimization 2: Turn off Bluetooth radio hardware completely
-  btStop();
-
-  delay(1000);
-
+  delay(500);
   Serial.begin(115200);
   unsigned long startWait = millis();
-  while (!Serial && (millis() - startWait < 3000)) {
-    delay(10);
+  while (!Serial && (millis() - startWait < 2500)) delay(10);
+
+  snprintf(unitOscPath, sizeof(unitOscPath), "/pit/unit%d/inputs", UNIT_ID);
+
+  Serial.println("\n==============================================");
+  Serial.print(" THE PIT PROJECT: STATION CONTROLLER (UNIT ");
+  Serial.print(UNIT_ID);
+  Serial.println(")");
+  Serial.println(" Hardware: 4 Buttons + 4x 12V MOSFET LED Channels");
+  Serial.println(" Lighting: Local 60FPS Gamma Ramped Engine");
+  Serial.println("==============================================");
+
+  // Initialize Hardware Pins & PWM
+  for (int i = 0; i < 4; i++) {
+    BUTTONS[i].btnPin        = BTN_PINS[i];
+    BUTTONS[i].ledPin        = LED_PINS[i];
+    BUTTONS[i].pwmChannel    = PWM_CHANNELS[i];
+    BUTTONS[i].lastRawState  = HIGH;
+    BUTTONS[i].isPressed     = false;
+    BUTTONS[i].lightMode     = LIGHT_ATTRACT;
+
+    pinMode(BUTTONS[i].btnPin, INPUT_PULLUP);
+
+#if defined(ESP_ARDUINO_VERSION_MAJOR) && (ESP_ARDUINO_VERSION_MAJOR >= 3)
+    ledcAttach(BUTTONS[i].ledPin, PWM_FREQ, PWM_RESOLUTION);
+#else
+    ledcSetup(BUTTONS[i].pwmChannel, PWM_FREQ, PWM_RESOLUTION);
+    ledcAttachPin(BUTTONS[i].ledPin, BUTTONS[i].pwmChannel);
+#endif
+
+    writePwmDuty(i, 0);
   }
 
-  for (int i = 0; i < NUM_STATIONS; i++) {
-    pinMode(STATIONS[i].btnPin, INPUT_PULLUP);
-    if (STATIONS[i].ledPin >= 0) {
-      pinMode(STATIONS[i].ledPin, OUTPUT);
-      digitalWrite(STATIONS[i].ledPin, LOW);
-    }
-    if (STATIONS[i].dataPin >= 0 && STATIONS[i].clockPin >= 0) {
-      pinMode(STATIONS[i].dataPin, OUTPUT);
-      pinMode(STATIONS[i].clockPin, OUTPUT);
-      digitalWrite(STATIONS[i].dataPin, LOW);
-      digitalWrite(STATIONS[i].clockPin, HIGH); // CLK idles HIGH per datasheet
-    }
-  }
-
-  Serial.println("==========================================");
-  Serial.println(" THE PIT: DOME RING CONTROLLER (ESP32)    ");
-  Serial.println(" Sequence: Rainbow (0x09) -> Breathing (0x00) -> Solid -> Breathing -> Rainbow ");
-  Serial.println("==========================================");
-
-  // Initialize ring in Attract Mode (Rotating Rainbow)
-  currentState = STATE_ATTRACT;
-  for (int i = 0; i < NUM_STATIONS; i++) {
-    if (STATIONS[i].dataPin >= 0) {
-      setRingMode(STATIONS[i].dataPin, STATIONS[i].clockPin, CMD_ATTRACT_RAINBOW);
-    }
-  }
+  randomSeed(analogRead(34) + micros());
+  attractPhaseStartTime = millis();
 
   if (DEBUG_OFFLINE_MODE) {
-    Serial.println("\n*** DEBUG_OFFLINE_MODE IS ACTIVE ***");
+    Serial.println("\n*** DEBUG_OFFLINE_MODE ACTIVE ***");
     Serial.println("- Wi-Fi connection skipped for fast bench testing.");
-    Serial.println("- Press buttons, send 1, 2, 3, or 'a' / 'g' in Serial.");
-    Serial.println("- Send 'k' to simulate incoming ACK from Unreal Engine.\n");
+    Serial.println("- Press buttons or type '1', '2', '3', '4' in Serial.");
+    Serial.println("- Send 'k' to simulate ACK, 'b' to simulate beat tick.\n");
   } else {
     WiFi.mode(WIFI_STA);
-    WiFi.setSleep(false); // Disable modem sleep for ultra low-latency OSC response
-    // Power Optimization 3: Reduce Wi-Fi TX power from 20dBm to 15dBm (reduces peak TX current spikes)
+    WiFi.setSleep(false); // Low-latency packet transmission
     WiFi.setTxPower(WIFI_POWER_15dBm);
     WiFi.begin(ssid, pass);
-    
-    Serial.print("Connecting to Wi-Fi: ");
-    Serial.println(ssid);
+
+    Serial.print("Connecting to Wi-Fi '");
+    Serial.print(ssid);
+    Serial.print("'");
     while (WiFi.status() != WL_CONNECTED) {
-      delay(500);
+      delay(300);
       Serial.print(".");
     }
-    Serial.println();
+    Serial.println("\n[Wi-Fi Connected!] ESP32 IP: " + WiFi.localIP().toString());
 
     Udp.begin(inPort);
-    Serial.print("[Wi-Fi Connected!] ESP32 IP: ");
-    Serial.println(WiFi.localIP());
-
-    // Transmit initial state upon boot until acknowledged
     sendStatePacket();
   }
 }
 
 // ============================================================================
-// 8. Main Loop
+// 9. Main Loop
 // ============================================================================
 void loop() {
   unsigned long now = millis();
 
-  // Reconnect Wi-Fi if dropped in online mode
+  // --- 1. Wi-Fi Reconnection Watchdog ---
   if (!DEBUG_OFFLINE_MODE && WiFi.status() != WL_CONNECTED) {
-    Serial.println("\n[!] Wi-Fi lost, reconnecting...");
     WiFi.disconnect();
     delay(200);
     WiFi.begin(ssid, pass);
     unsigned long reconnStart = millis();
-    while (WiFi.status() != WL_CONNECTED && millis() - reconnStart < 4000) {
+    while (WiFi.status() != WL_CONNECTED && millis() - reconnStart < 3000) {
       delay(200);
       Serial.print(".");
     }
@@ -323,180 +516,177 @@ void loop() {
       Serial.println("\n[Wi-Fi Reconnected!]");
       triggerStateChange();
     }
-    return;
   }
 
-  // --- Serial Simulation ---
+  // --- 2. Serial Simulation for Bench Testing ---
   if (Serial.available()) {
     char c = Serial.read();
-    int idx = -1;
-    if (c >= '1' && c <= ('0' + NUM_STATIONS)) {
-      idx = (c - '1');
+    if (c >= '1' && c <= '4') {
+      int idx = c - '1';
+      BUTTONS[idx].isPressed = !BUTTONS[idx].isPressed;
+      Serial.print("[Serial Toggle] Button ");
+      Serial.print(idx + 1);
+      Serial.println(BUTTONS[idx].isPressed ? " => PRESSED" : " => RELEASED");
+
+      if (BUTTONS[idx].isPressed) {
+        BUTTONS[idx].pressStartTime = now;
+        if (BUTTONS[idx].lightMode != LIGHT_LOCKED_ACTIVE) {
+          BUTTONS[idx].lightMode = LIGHT_CHARGING;
+        }
+      } else {
+        BUTTONS[idx].releaseTime = now;
+        unsigned long pressHold = now - BUTTONS[idx].pressStartTime;
+        if (BUTTONS[idx].lightMode == LIGHT_LOCKED_ACTIVE && pressHold <= TAP_CUT_MAX_MS) {
+          BUTTONS[idx].lightMode = LIGHT_DECAY;
+          Serial.print("[Serial Tap to Cut] Button ");
+          Serial.print(idx + 1);
+          Serial.println(" -> Crystal Deactivated (Cut)");
+        } else if (BUTTONS[idx].lightMode == LIGHT_CHARGING) {
+          BUTTONS[idx].lightMode = LIGHT_DECAY;
+        }
+      }
+      lastGlobalActivityTime = now;
+      triggerStateChange();
+    } else if (c == 'm' || c == 'M') {
+      maxActivePerStation = (maxActivePerStation % 4) + 1;
+      Serial.print("<<< [Serial Config] maxActivePerStation = ");
+      Serial.println(maxActivePerStation);
+    } else if (c == 'b' || c == 'B') {
+      lastBeatTickTime = now;
+      Serial.println("<<< [Serial Beat Tick]");
     } else if (c == 'k' || c == 'K') {
-      Serial.print("<<< [Serial Simulated ACK] seq ");
-      Serial.print(currentSequence);
-      Serial.println(" -> Entering REST mode");
       needsAck = false;
       lastAckedSequence = currentSequence;
+      Serial.println("<<< [Serial Simulated ACK]");
     } else if (c == 'a' || c == 'A') {
-      currentState = STATE_ATTRACT;
-      isWaitingForAttract = false;
-      isSolidActive = false;
-      Serial.println("<<< [Serial] State: ATTRACT MODE (Rainbow)");
-      for (int i = 0; i < NUM_STATIONS; i++) setStationRingState(i);
-    } else if (c == 'g' || c == 'G') {
-      currentState = STATE_ACTIVE;
-      isWaitingForAttract = false;
-      Serial.println("<<< [Serial] State: ACTIVE GAMEPLAY");
-      for (int i = 0; i < NUM_STATIONS; i++) setStationRingState(i);
-    }
-
-    if (idx >= 0 && idx < NUM_STATIONS) {
-      STATIONS[idx].isPressed = !STATIONS[idx].isPressed;
-      Serial.print("[Serial Toggle] ");
-      Serial.print(STATIONS[idx].oscPath);
-      Serial.println(STATIONS[idx].isPressed ? " => ON (1.0)" : " => OFF (0.0)");
-      triggerStateChange();
-
-      if (STATIONS[idx].isPressed) {
-        STATIONS[idx].pressStartTime = now;
-        currentState = STATE_ACTIVE;
-        isSolidActive = false;
-        isWaitingForAttract = false;
-        setStationRingState(idx);
-      } else {
-        isSolidActive = false;
-        lastReleaseTime = now;
-        isWaitingForAttract = true;
-        setStationRingState(idx);
-      }
+      globalState = STATE_ATTRACT_MODE;
+      for (int i = 0; i < 4; i++) BUTTONS[i].lightMode = LIGHT_ATTRACT;
+      Serial.println("<<< [Serial Force ATTRACT MODE]");
     }
   }
 
-  // --- Incoming OSC Poll (Unthrottled for sub-millisecond ACK capture) ---
+  // --- 3. Incoming OSC Poll ---
   if (!DEBUG_OFFLINE_MODE) {
     int packetSize = Udp.parsePacket();
     if (packetSize > 0) {
       OSCMessage inMsg;
-      while (packetSize--) {
-        inMsg.fill(Udp.read());
-      }
+      while (packetSize--) inMsg.fill(Udp.read());
+
       if (!inMsg.hasError()) {
         if (inMsg.match("/pit/ack")) {
           int32_t ackSeq = 0;
-          if (inMsg.isInt(0)) {
-            ackSeq = inMsg.getInt(0);
-          }
+          if (inMsg.isInt(0)) ackSeq = inMsg.getInt(0);
           if (ackSeq >= currentSequence) {
-            if (needsAck) {
-              Serial.print("<<< [ACK Received] seq ");
-              Serial.print(ackSeq);
-              Serial.println(" -> Entering REST mode");
-            }
             needsAck = false;
             lastAckedSequence = ackSeq;
           }
         } else if (inMsg.match("/pit/sync")) {
-          Serial.println("<<< [Sync Request Received] Resending current state snapshot");
           triggerStateChange();
+        } else if (inMsg.match("/pit/beat") || inMsg.match("/pit/clock/bar")) {
+          lastBeatTickTime = now; // Synchronize beat pulses with Unreal Quartz clock
         } else if (inMsg.match("/pit/attract")) {
-          currentState = STATE_ATTRACT;
-          isWaitingForAttract = false;
-          isSolidActive = false;
-          Serial.println("<<< State: ATTRACT MODE (Rainbow)");
-          for (int i = 0; i < NUM_STATIONS; i++) {
-            setStationRingState(i);
+          globalState = STATE_ATTRACT_MODE;
+          attractPhaseStartTime = now;
+          for (int i = 0; i < 4; i++) BUTTONS[i].lightMode = LIGHT_ATTRACT;
+        } else if (inMsg.match("/pit/led/all")) {
+          float v = 0.0f;
+          if (inMsg.isFloat(0)) v = inMsg.getFloat(0);
+          if (v <= 0.01f) {
+            for (int i = 0; i < 4; i++) BUTTONS[i].lightMode = LIGHT_ATTRACT;
           }
-        } else if (inMsg.match("/pit/gameplay")) {
-          currentState = STATE_ACTIVE;
-          isWaitingForAttract = false;
-          Serial.println("<<< State: ACTIVE GAMEPLAY");
-          for (int i = 0; i < NUM_STATIONS; i++) {
-            setStationRingState(i);
+        } else {
+          // Check for channel-specific crystal expiration (e.g. /pit/led/player1)
+          char inAddress[48];
+          inMsg.getAddress(inAddress);
+          if (strncmp(inAddress, "/pit/led/player", 15) == 0) {
+            int playerNum = atoi(&inAddress[15]);
+            int baseChannel = (UNIT_ID - 1) * 4;
+            if (playerNum >= (baseChannel + 1) && playerNum <= (baseChannel + 4)) {
+              int localBtn = playerNum - (baseChannel + 1);
+              float val = 0.0f;
+              if (inMsg.isFloat(0)) val = inMsg.getFloat(0);
+              if (val <= 0.01f) {
+                BUTTONS[localBtn].lightMode = LIGHT_ATTRACT;
+                Serial.print("[OSC Expiry] Station Button ");
+                Serial.print(localBtn + 1);
+                Serial.println(" -> Released from Lock back to Attract");
+              }
+            }
           }
         }
       }
     }
   }
 
-  // --- Button Read & Physical Inputs ---
-  for (int i = 0; i < NUM_STATIONS; i++) {
-    int reading = digitalRead(STATIONS[i].btnPin);
+  // --- 4. Physical Button Debounce & Batching ---
+  bool stateChanged = false;
 
-    if (reading != STATIONS[i].lastState) {
-      if ((now - STATIONS[i].lastDebounce) > DEBOUNCE_MS) {
-        STATIONS[i].lastDebounce = now;
-        STATIONS[i].lastState = reading;
+  for (int i = 0; i < 4; i++) {
+    int reading = digitalRead(BUTTONS[i].btnPin);
+
+    if (reading != BUTTONS[i].lastRawState) {
+      if ((now - BUTTONS[i].lastDebounceTime) > DEBOUNCE_MS) {
+        BUTTONS[i].lastDebounceTime = now;
+        BUTTONS[i].lastRawState     = reading;
 
         if (reading == LOW) {
-          // --- BUTTON PRESSED (Charging / Breathing) ---
-          STATIONS[i].isPressed = true;
-          STATIONS[i].pressStartTime = now;
-          currentState = STATE_ACTIVE;
-          isSolidActive = false;
-          isWaitingForAttract = false;
+          // --- PRESSED ---
+          BUTTONS[i].isPressed      = true;
+          BUTTONS[i].pressStartTime = now;
+          lastGlobalActivityTime    = now;
+          stateChanged              = true;
 
-          Serial.print("[Button Pressed] ");
-          Serial.print(STATIONS[i].oscPath);
-          Serial.println(" -> Step 1: Charging (Breathing Mode 0x00)");
-          triggerStateChange();
-
-          setStationRingState(i);
+          // If button was NOT already active, begin charging
+          if (BUTTONS[i].lightMode != LIGHT_LOCKED_ACTIVE) {
+            BUTTONS[i].lightMode = LIGHT_CHARGING;
+            Serial.print("[Press] Button ");
+            Serial.print(i + 1);
+            Serial.println(" -> Charging Crystal...");
+          } else {
+            Serial.print("[Press Active] Button ");
+            Serial.print(i + 1);
+            Serial.println(" -> Tap to Cut or Hold to Recharge");
+          }
         } else {
-          // --- BUTTON RELEASED ---
-          STATIONS[i].isPressed = false;
-          isSolidActive = false;
-          lastReleaseTime = now;
-          isWaitingForAttract = true;
+          // --- RELEASED ---
+          BUTTONS[i].isPressed   = false;
+          BUTTONS[i].releaseTime = now;
+          lastGlobalActivityTime = now;
+          stateChanged           = true;
 
-          Serial.print("[Button Released] ");
-          Serial.print(STATIONS[i].oscPath);
-          Serial.println(" -> Step 3: Return to Breathing (0x00) - Inactivity timer started");
-          triggerStateChange();
+          unsigned long pressHold = now - BUTTONS[i].pressStartTime;
 
-          setStationRingState(i);
+          if (BUTTONS[i].lightMode == LIGHT_LOCKED_ACTIVE && pressHold <= TAP_CUT_MAX_MS) {
+            // TAP TO CUT: Quick tap on active button deactivates/cuts it!
+            BUTTONS[i].lightMode = LIGHT_DECAY;
+            Serial.print("[Tap to Cut] Button ");
+            Serial.print(i + 1);
+            Serial.println(" -> Crystal Deactivated (Cut)");
+          } else if (BUTTONS[i].lightMode == LIGHT_CHARGING) {
+            // Early release before 100% -> fizzle decay
+            BUTTONS[i].lightMode = LIGHT_DECAY;
+            Serial.print("[Release] Button ");
+            Serial.print(i + 1);
+            Serial.println(" -> Incomplete Charge, Decay");
+          } else {
+            Serial.print("[Release] Button ");
+            Serial.print(i + 1);
+            Serial.println(" -> Active Stem Sustained");
+          }
         }
       }
     }
-
-    // --- Check Hold Duration while Button is Held (Step 2: Charge Reached -> Solid Color) ---
-    if (STATIONS[i].isPressed && !isSolidActive) {
-      if (now - STATIONS[i].pressStartTime >= HOLD_TO_SOLID_MS) {
-        isSolidActive = true;
-        Serial.print("[Charge Complete] ");
-        Serial.print(STATIONS[i].oscPath);
-        Serial.println(" -> Step 2: Locked Solid Color");
-        setStationRingState(i);
-      }
-    }
-
-    // Status LED mirror
-    if (STATIONS[i].ledPin >= 0) {
-      digitalWrite(STATIONS[i].ledPin, STATIONS[i].isPressed ? HIGH : LOW);
-    }
   }
 
-  // --- Check Inactivity Timeout after Release (Step 4: Return to Attract Rainbow) ---
-  if (isWaitingForAttract && currentState == STATE_ACTIVE) {
-    bool anyPressed = false;
-    for (int i = 0; i < NUM_STATIONS; i++) {
-      if (STATIONS[i].isPressed) {
-        anyPressed = true;
-        break;
-      }
-    }
-
-    if (!anyPressed && (now - lastReleaseTime >= RELEASE_TO_ATTRACT_MS)) {
-      isWaitingForAttract = false;
-      currentState = STATE_ATTRACT;
-      Serial.println("[Inactivity Timeout] -> Step 4: Return to Attract Mode (Rainbow)");
-      for (int i = 0; i < NUM_STATIONS; i++) {
-        setStationRingState(i);
-      }
-    }
+  // Dispatch at most ONE state snapshot packet even if multiple buttons changed at once
+  if (stateChanged) {
+    triggerStateChange();
   }
 
-  // --- Retransmission Loop (Battery-Saver Sleep when Timed Out or ACKed) ---
+  // --- 5. Run Local 60 FPS Lighting Engine ---
+  updateLighting(now);
+
+  // --- 6. Reliable OSC Retransmission Loop ---
   if (needsAck) {
     if (now - lastSendTime >= RETRY_INTERVAL_MS) {
       if (retryCount < MAX_RETRIES) {
@@ -504,14 +694,13 @@ void loop() {
         retryCount++;
         sendStatePacket();
       } else {
-        // Battery Saver Hard Stop: give up after 2.0s without ACK.
-        // Halts all radio transmission; self-heals on next button press or incoming /pit/sync.
+        // Battery Saver Stop after 2.0s without ACK
         needsAck = false;
-        Serial.println("[OSC Battery Saver] No ACK after 2.0s. Stopping radio transmission until next press or sync.");
+        Serial.println("[OSC Battery Saver] Radio paused until next button press or sync.");
       }
     }
   }
 
-  // Power Optimization 4: Yield 2ms to FreeRTOS IDLE task to enable CPU core clock-gating
+  // FreeRTOS CPU core clock-gating yield
   delay(2);
 }

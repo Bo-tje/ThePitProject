@@ -32,7 +32,7 @@ public:
 	TObjectPtr<USceneComponent> StationRoot;
 
 	// --- Station Configuration ---
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Station|Config", meta = (ClampMin = "0", ClampMax = "19"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Station|Config", meta = (ClampMin = "0", ClampMax = "23"))
 	int32 StationIndex = 0;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Station|Config")
@@ -66,12 +66,19 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Station|Config")
 	float SpawnRate = 350.0f;
 
+	// Maximum press duration to register as a "Tap to Cut" deactivation on an already-active crystal
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Station|Config", meta = (ClampMin = "0.05", ClampMax = "1.0"))
+	float TapCutMaxDurationSeconds = 0.40f;
+
 	UFUNCTION(BlueprintCallable, CallInEditor, Category = "Station|Config")
 	void ApplyDefaultPresetForIndex();
 
 	// --- Runtime State ---
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Station|Runtime")
 	bool bIsPressed = false;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Station|Runtime")
+	float LastPressTimestamp = 0.0f;
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Station|Runtime")
 	float CurrentPressure = 0.0f;

@@ -103,5 +103,8 @@ public:
 	void TriggerBeatPulse(float Intensity = 1.0f);
 
 	UFUNCTION(BlueprintCallable, Category = "Crystal")
+	void DeactivateCrystal();
+
+	UFUNCTION(BlueprintCallable, Category = "Crystal")
 	void ResetCrystal();
 };

@@ -1,5 +1,6 @@
 #include "HarmonicConvergenceAudioManager.h"
 #include "HarmonicConvergenceSynthComponent.h"
+#include "InputManagerSubSystem.h"
 #include "Kismet/GameplayStatics.h"
 #include "NiagaraComponent.h"
 #include "Quartz/AudioMixerClockHandle.h"
@@ -156,22 +157,27 @@ void AHarmonicConvergenceAudioManager::ApplyHarmonicScaleFrequencies()
 		return;
 	}
 
-	static constexpr float ScaleFreqs[5][20] = {
+	static constexpr float ScaleFreqs[5][24] = {
 		// PentatonicMajor
 		{ 65.41f, 196.00f, 293.66f, 783.99f, 130.81f, 329.63f, 987.77f, 392.00f, 1174.66f, 98.00f,
-		  440.00f, 1318.51f, 523.25f, 587.33f, 1567.98f, 196.00f, 659.25f, 2093.00f, 261.63f, 1046.50f },
+		  440.00f, 1318.51f, 523.25f, 587.33f, 1567.98f, 196.00f, 659.25f, 2093.00f, 261.63f, 1046.50f,
+		  392.00f, 659.25f, 1318.51f, 196.00f },
 		// PentatonicMinor
 		{ 65.41f, 196.00f, 311.13f, 783.99f, 130.81f, 349.23f, 932.33f, 392.00f, 1244.51f, 98.00f,
-		  466.16f, 1396.91f, 523.25f, 622.25f, 1567.98f, 196.00f, 698.46f, 2093.00f, 261.63f, 1046.50f },
+		  466.16f, 1396.91f, 523.25f, 622.25f, 1567.98f, 196.00f, 698.46f, 2093.00f, 261.63f, 1046.50f,
+		  392.00f, 622.25f, 1244.51f, 196.00f },
 		// LydianCelestial
 		{ 65.41f, 196.00f, 293.66f, 739.99f, 130.81f, 329.63f, 987.77f, 392.00f, 1174.66f, 98.00f,
-		  440.00f, 1479.98f, 523.25f, 587.33f, 1760.00f, 196.00f, 659.25f, 2093.00f, 261.63f, 1046.50f },
+		  440.00f, 1479.98f, 523.25f, 587.33f, 1760.00f, 196.00f, 659.25f, 2093.00f, 261.63f, 1046.50f,
+		  440.00f, 739.99f, 1479.98f, 196.00f },
 		// HirajoshiLuminous
 		{ 65.41f, 196.00f, 277.18f, 783.99f, 130.81f, 349.23f, 880.00f, 392.00f, 1108.73f, 98.00f,
-		  415.30f, 1396.91f, 523.25f, 554.37f, 1567.98f, 196.00f, 698.46f, 2093.00f, 261.63f, 1046.50f },
+		  415.30f, 1396.91f, 523.25f, 554.37f, 1567.98f, 196.00f, 698.46f, 2093.00f, 261.63f, 1046.50f,
+		  415.30f, 783.99f, 1396.91f, 196.00f },
 		// DorianAmbient
 		{ 65.41f, 196.00f, 293.66f, 783.99f, 130.81f, 329.63f, 932.33f, 392.00f, 1174.66f, 98.00f,
-		  440.00f, 1318.51f, 523.25f, 587.33f, 1567.98f, 196.00f, 659.25f, 2093.00f, 261.63f, 1046.50f }
+		  440.00f, 1318.51f, 523.25f, 587.33f, 1567.98f, 196.00f, 659.25f, 2093.00f, 261.63f, 1046.50f,
+		  440.00f, 698.46f, 1396.91f, 196.00f }
 	};
 
 	const int32 ModeIdx = FMath::Clamp(static_cast<int32>(ScaleMode), 0, 4);
@@ -179,7 +185,7 @@ void AHarmonicConvergenceAudioManager::ApplyHarmonicScaleFrequencies()
 	{
 		if (Station)
 		{
-			Station->BaseFrequencyHz = ScaleFreqs[ModeIdx][Station->StationIndex % 20];
+			Station->BaseFrequencyHz = ScaleFreqs[ModeIdx][Station->StationIndex % 24];
 		}
 	}
 }
@@ -217,6 +223,42 @@ void AHarmonicConvergenceAudioManager::HandleCrystalActivated(AHarmonicCrystalAc
 	if (!Station)
 	{
 		return;
+	}
+
+	// Auto-Swap: If physical station unit exceeds MaxActiveCrystalsPerStation, deactivate the oldest active crystal
+	const int32 UnitIdx = Station->StationIndex / 4;
+	TArray<AHarmonicStationActor*> UnitActiveStations;
+
+	for (AHarmonicStationActor* OtherStation : Stations)
+	{
+		if (OtherStation && OtherStation != Station && (OtherStation->StationIndex / 4) == UnitIdx)
+		{
+			if (OtherStation->IsCrystalActive())
+			{
+				UnitActiveStations.Add(OtherStation);
+			}
+		}
+	}
+
+	if (UnitActiveStations.Num() >= MaxActiveCrystalsPerStation)
+	{
+		// Find oldest active crystal in this unit (lowest remaining lifespan)
+		AHarmonicStationActor* OldestStation = nullptr;
+		float LowestRemainingLifespan = 999999.0f;
+
+		for (AHarmonicStationActor* S : UnitActiveStations)
+		{
+			if (S->CrystalActor && S->CrystalActor->RemainingLifespan < LowestRemainingLifespan)
+			{
+				LowestRemainingLifespan = S->CrystalActor->RemainingLifespan;
+				OldestStation = S;
+			}
+		}
+
+		if (OldestStation && OldestStation->CrystalActor)
+		{
+			OldestStation->CrystalActor->DeactivateCrystal();
+		}
 	}
 
 	if (ProceduralSynthComponent)
@@ -270,6 +312,15 @@ void AHarmonicConvergenceAudioManager::HandleCrystalExpired(AHarmonicCrystalActo
 
 	OnCrystalEchoRippleTriggered.Broadcast(Station->StationIndex, Station->GetCrystalWorldLocation());
 	OnPersistentBeatDeactivated.Broadcast(Station->StationIndex);
+
+	// Notify physical station hardware that crystal has expired (clears locked LED state)
+	if (UGameInstance* GI = GetGameInstance())
+	{
+		if (UInputManagerSubSystem* InputSubsystem = GI->GetSubsystem<UInputManagerSubSystem>())
+		{
+			InputSubsystem->SendLEDState(Station->ChannelName, 0.0f);
+		}
+	}
 }
 
 void AHarmonicConvergenceAudioManager::Tick(float DeltaTime)
@@ -286,6 +337,18 @@ void AHarmonicConvergenceAudioManager::Tick(float DeltaTime)
 		{
 			LastBeatStep = CurrentStep;
 			const int32 StepBit = (1 << CurrentStep);
+
+			// Broadcast musical beat pulse to all physical station ESP32s on every quarter-note
+			if (CurrentStep % 4 == 0)
+			{
+				if (UGameInstance* GI = GetGameInstance())
+				{
+					if (UInputManagerSubSystem* InputSubsystem = GI->GetSubsystem<UInputManagerSubSystem>())
+					{
+						InputSubsystem->SendOSCFloat(TEXT("/pit/beat"), 1.0f);
+					}
+				}
+			}
 
 			for (AHarmonicStationActor* Station : Stations)
 			{
@@ -305,15 +368,18 @@ void AHarmonicConvergenceAudioManager::UpdateGameAndSound(float DeltaTime)
 	int32 CurrentlyActiveLoopers = 0;
 	float TotalModulationAccumulator = 0.0f;
 
+	int32 StationActiveCounts[6] = {0, 0, 0, 0, 0, 0};
 	for (AHarmonicStationActor* Station : Stations)
 	{
 		if (Station && Station->IsCrystalActive())
 		{
 			CurrentlyActiveLoopers++;
+			const int32 UnitIdx = FMath::Clamp(Station->StationIndex / 4, 0, 5);
+			StationActiveCounts[UnitIdx]++;
 		}
 	}
 
-	const bool bCanMoreActivate = (CurrentlyActiveLoopers < MaxActiveCrystals);
+	const bool bGlobalCanActivate = (CurrentlyActiveLoopers < MaxActiveCrystals);
 
 	for (AHarmonicStationActor* Station : Stations)
 	{
@@ -324,7 +390,8 @@ void AHarmonicConvergenceAudioManager::UpdateGameAndSound(float DeltaTime)
 
 		if (Station->CrystalActor)
 		{
-			Station->CrystalActor->bCanActivate = bCanMoreActivate;
+			// Global room ceiling governs whether any more crystals can activate
+			Station->CrystalActor->bCanActivate = bGlobalCanActivate;
 		}
 
 		if (Station->bIsPressed)
