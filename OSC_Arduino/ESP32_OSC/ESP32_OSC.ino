@@ -26,7 +26,7 @@
 // Change UNIT_ID for each physical station (1 through 6)
 const int UNIT_ID = 1; 
 
-const bool DEBUG_OFFLINE_MODE = true; // Set true for bench testing without Wi-Fi
+const bool DEBUG_OFFLINE_MODE = false; // Set true for bench testing without Wi-Fi
 
 char ssid[] = "HarmonicInstallation";              // Wi-Fi SSID
 char pass[] = "Boislief45";                   // Wi-Fi Password
@@ -44,10 +44,11 @@ WiFiUDP Udp;
 const int BTN_PINS[4] = { 18, 19, 21, 22 };
 
 // 4 MOSFET Gate control pins (PWM driven)
-const int LED_PINS[4] = { 25, 26, 27, 32 };
+// Note: Pins 25, 26, 27, 32 are all hardware PWM capable outputs (Avoid GPI 34-39 which are input-only!)
+const int LED_PINS[4] = { 25, 26, 27, 33 };
 
-// PWM Setup (5 kHz = high-speed, silent, zero-flicker)
-const int PWM_FREQ       = 5000;
+// PWM Setup (1000 Hz = optimal for PC817 optocoupled MOSFET modules)
+const int PWM_FREQ       = 1000;
 const int PWM_RESOLUTION = 8;     // 8-bit resolution (0 - 255)
 const int PWM_CHANNELS[4] = { 0, 1, 2, 3 };
 
@@ -213,18 +214,26 @@ void writePwmDuty(int idx, uint8_t duty) {
 #if defined(ESP_ARDUINO_VERSION_MAJOR) && (ESP_ARDUINO_VERSION_MAJOR >= 3)
   ledcWrite(BUTTONS[idx].ledPin, duty);
 #else
-  ledcWrite(BUTTONS[idx].pwmChannel, duty);
+  analogWrite(BUTTONS[idx].ledPin, duty);
 #endif
 }
 
 void applyLedLinear(int idx, float linearBrightness) {
+  // If zero or near-zero, cut completely
+  if (linearBrightness <= 0.005f) {
+    writePwmDuty(idx, 0);
+    return;
+  }
+
   // Clamp 0.0 to 1.0
-  if (linearBrightness < 0.0f) linearBrightness = 0.0f;
   if (linearBrightness > 1.0f) linearBrightness = 1.0f;
   
   uint8_t index = (uint8_t)(linearBrightness * 255.0f);
-  uint8_t gammaDuty = pgm_read_byte(&GAMMA_LUT[index]);
-  writePwmDuty(idx, gammaDuty);
+  uint8_t rawDuty = pgm_read_byte(&GAMMA_LUT[index]);
+
+  // Optocoupler threshold offset: start at duty 12 so PC817 conducts immediately
+  uint8_t optoDuty = 12 + (uint8_t)(((float)rawDuty / 255.0f) * (255 - 12));
+  writePwmDuty(idx, optoDuty);
 }
 
 // ============================================================================
@@ -454,15 +463,17 @@ void setup() {
     BUTTONS[i].lightMode     = LIGHT_ATTRACT;
 
     pinMode(BUTTONS[i].btnPin, INPUT_PULLUP);
+    pinMode(BUTTONS[i].ledPin, OUTPUT);
+    digitalWrite(BUTTONS[i].ledPin, LOW);
 
 #if defined(ESP_ARDUINO_VERSION_MAJOR) && (ESP_ARDUINO_VERSION_MAJOR >= 3)
     ledcAttach(BUTTONS[i].ledPin, PWM_FREQ, PWM_RESOLUTION);
+    ledcWrite(BUTTONS[i].ledPin, 0);
 #else
-    ledcSetup(BUTTONS[i].pwmChannel, PWM_FREQ, PWM_RESOLUTION);
-    ledcAttachPin(BUTTONS[i].ledPin, BUTTONS[i].pwmChannel);
+    analogWriteFrequency(BUTTONS[i].ledPin, PWM_FREQ);
+    analogWriteResolution(BUTTONS[i].ledPin, PWM_RESOLUTION);
+    analogWrite(BUTTONS[i].ledPin, 0);
 #endif
-
-    writePwmDuty(i, 0);
   }
 
   randomSeed(analogRead(34) + micros());
