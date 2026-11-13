@@ -45,24 +45,34 @@ public:
 	UPROPERTY(Transient, VisibleAnywhere, BlueprintReadOnly, Category = "Harmonics|Audio")
 	TObjectPtr<UQuartzClockHandle> MasterQuartzClock;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Harmonics|Beat")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Harmonics|Setup")
 	float MasterBPM = 120.0f;
 
-	UFUNCTION(BlueprintCallable, Category = "Harmonics|Beat")
+	UFUNCTION(BlueprintCallable, Category = "Harmonics|Setup")
 	void SetMasterBPM(float NewBPM);
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Harmonics|Beat")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Harmonics|Setup")
 	int32 MaxActiveCrystals = 12;
 
 	// Maximum active crystals allowed per physical station unit (4 buttons per station)
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Harmonics|Beat", meta = (ClampMin = "1", ClampMax = "4"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Harmonics|Setup", meta = (ClampMin = "1", ClampMax = "4"))
 	int32 MaxActiveCrystalsPerStation = 2;
+
+	// --- Hardware Sync Defaults (Applied to all non-custom Stations/Crystals & ESP32s) ---
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Harmonics|Setup", meta = (ClampMin = "0.1"))
+	float CrystalChargeTimeSeconds = 2.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Harmonics|Setup", meta = (ClampMin = "0.05", ClampMax = "1.0"))
+	float TapCutMaxDurationSeconds = 0.40f;
+
+	UFUNCTION(BlueprintCallable, Category = "Harmonics|Setup")
+	void SyncHardwareConfig();
 
 	// --- Attract & Overdrive ---
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Harmonics|Attract")
 	bool bEnableAttractMode = true;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Harmonics|Attract")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Harmonics|Setup")
 	float AttractModeTimeoutSeconds = 15.0f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Harmonics|Attract")

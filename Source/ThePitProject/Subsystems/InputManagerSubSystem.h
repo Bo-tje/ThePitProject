@@ -9,6 +9,27 @@
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_ThreeParams(FOnInputChanged, FName, Channel, float, Value, float, Delta);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnChannelEvent, FName, Channel);
 
+USTRUCT(BlueprintType)
+struct FPitSyncConfig
+{
+	GENERATED_BODY()
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "OSC|Sync")
+	int32 ChargeTimeMs = 2000;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "OSC|Sync")
+	int32 TapCutMaxMs = 400;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "OSC|Sync")
+	int32 IdleToAttractMs = 4000;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "OSC|Sync")
+	int32 MaxActivePerStation = 2;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "OSC|Sync")
+	float MasterBPM = 120.0f;
+};
+
 UCLASS()
 class THEPITPROJECT_API UInputManagerSubSystem : public UGameInstanceSubsystem
 {
@@ -70,9 +91,12 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "OSC|Sender")
 	void SendACK(const FString& InIPAddress, int32 SequenceId, int32 InPort = 8888);
 
-	// Requests all hardware controllers to broadcast their current state snapshot
+	// Requests all hardware controllers to broadcast their current state snapshot and applies sync config
 	UFUNCTION(BlueprintCallable, Category = "OSC|Sender")
 	void RequestSync();
+
+	UFUNCTION(BlueprintCallable, Category = "OSC|Sender")
+	void SetSyncConfigAndSync(const FPitSyncConfig& NewConfig);
 
 	// Dedicated LED & Hardware Output functions
 	UFUNCTION(BlueprintCallable, Category = "OSC|Lighting")
@@ -100,6 +124,13 @@ private:
 	UPROPERTY(EditAnywhere, Category = "OSC|Client")
 	int32 TargetClientPort = 8888;
 
+	UPROPERTY(EditAnywhere, Category = "OSC|Sync")
+	FPitSyncConfig SyncConfig;
+
+	// Maps UnitId -> last known IP so /pit/sync reaches every active ESP32 on the network
+	TMap<int32, FString> UnitIPMap;
+
+	void SendSyncToIP(const FString& InIPAddress);
 	void OnNativeOSCMessageReceived(const FOSCMessage& Message, const FString& IPAddress, uint16 Port);
 	static FOSCAddress FormatOSCAddress(const FString& InAddress);
 };

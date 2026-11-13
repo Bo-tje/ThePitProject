@@ -36,6 +36,12 @@ def make_sync_packet() -> bytes:
     tags = b",\x00\x00\x00"
     return addr + tags
 
+def make_smart_sync_packet(charge_ms: int, tap_cut_ms: int, idle_ms: int, max_active: int, bpm: float) -> bytes:
+    addr = b"/pit/sync\x00\x00\x00"
+    tags = b",iiiif\x00\x00"
+    payload = struct.pack(">iiiif", charge_ms, tap_cut_ms, idle_ms, max_active, bpm)
+    return addr + tags + payload
+
 def test_packet_alignments():
     pkt = make_unit_inputs_packet(1, 42, [1.0, 0.0, 1.0])
     assert len(pkt) % 4 == 0, f"Packet length {len(pkt)} not 4-byte aligned"
@@ -133,8 +139,18 @@ def test_battery_timeout_and_sync():
     assert sleeping is False and needs_ack is True, "Client should wake up and re-transmit on /pit/sync"
     print("[PASS] Battery timeout sleep and /pit/sync wake-up logic passed.")
 
+def test_smart_sync_packet():
+    pkt = make_smart_sync_packet(2500, 350, 15000, 3, 128.0)
+    assert len(pkt) % 4 == 0, f"Smart sync packet length {len(pkt)} not 4-byte aligned"
+    assert pkt[:12] == b"/pit/sync\x00\x00\x00"
+    assert pkt[12:20] == b",iiiif\x00\x00"
+    charge_ms, tap_cut_ms, idle_ms, max_active, bpm = struct.unpack(">iiiif", pkt[20:40])
+    assert (charge_ms, tap_cut_ms, idle_ms, max_active, bpm) == (2500, 350, 15000, 3, 128.0)
+    print("[PASS] Smart /pit/sync serialization & alignment passed.")
+
 if __name__ == "__main__":
     test_packet_alignments()
     test_handshake_simulation()
     test_battery_timeout_and_sync()
+    test_smart_sync_packet()
     print("ALL OSC TESTS PASSED!")

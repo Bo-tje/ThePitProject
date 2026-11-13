@@ -216,19 +216,58 @@ void UInputManagerSubSystem::SendACK(const FString& InIPAddress, int32 SequenceI
 	}
 }
 
-void UInputManagerSubSystem::RequestSync()
+void UInputManagerSubSystem::SendSyncToIP(const FString& InIPAddress)
 {
+	if (InIPAddress.IsEmpty())
+	{
+		return;
+	}
+
 	if (!OSCClient)
 	{
-		StartOSCClient(TargetClientIP, TargetClientPort);
+		StartOSCClient(InIPAddress, TargetClientPort);
+	}
+	else
+	{
+		OSCClient->SetSendIPAddress(InIPAddress, TargetClientPort);
 	}
 
 	if (OSCClient)
 	{
 		FOSCMessage SyncMsg;
 		UOSCManager::SetOSCMessageAddress(SyncMsg, FormatOSCAddress(TEXT("/pit/sync")));
+		UOSCManager::AddInt32(SyncMsg, SyncConfig.ChargeTimeMs);
+		UOSCManager::AddInt32(SyncMsg, SyncConfig.TapCutMaxMs);
+		UOSCManager::AddInt32(SyncMsg, SyncConfig.IdleToAttractMs);
+		UOSCManager::AddInt32(SyncMsg, SyncConfig.MaxActivePerStation);
+		UOSCManager::AddFloat(SyncMsg, SyncConfig.MasterBPM);
 		OSCClient->SendOSCMessage(SyncMsg);
 	}
+}
+
+void UInputManagerSubSystem::RequestSync()
+{
+	if (UnitIPMap.Num() == 0)
+	{
+		SendSyncToIP(TargetClientIP);
+		return;
+	}
+
+	TSet<FString> SentIPs;
+	for (const TPair<int32, FString>& Pair : UnitIPMap)
+	{
+		if (!SentIPs.Contains(Pair.Value))
+		{
+			SentIPs.Add(Pair.Value);
+			SendSyncToIP(Pair.Value);
+		}
+	}
+}
+
+void UInputManagerSubSystem::SetSyncConfigAndSync(const FPitSyncConfig& NewConfig)
+{
+	SyncConfig = NewConfig;
+	RequestSync();
 }
 
 void UInputManagerSubSystem::SendLEDState(FName Channel, float Value)
@@ -299,6 +338,14 @@ void UInputManagerSubSystem::OnNativeOSCMessageReceived(const FOSCMessage& Messa
 
 		// Send ACK back to the microcontroller on port 8888
 		SendACK(IPAddress, SequenceId, TargetClientPort);
+
+		// Auto-sync any newly discovered or re-addressed unit with current timings
+		const FString* KnownIP = UnitIPMap.Find(UnitId);
+		if (!KnownIP || *KnownIP != IPAddress)
+		{
+			UnitIPMap.Add(UnitId, IPAddress);
+			SendSyncToIP(IPAddress);
+		}
 		return;
 	}
 

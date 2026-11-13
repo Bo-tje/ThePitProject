@@ -52,16 +52,17 @@ const int PWM_FREQ       = 1000;
 const int PWM_RESOLUTION = 8;     // 8-bit resolution (0 - 255)
 const int PWM_CHANNELS[4] = { 0, 1, 2, 3 };
 
-// --- Gameplay & Interaction Timings ---
+// --- Gameplay & Interaction Timings (Defaults, overridden by /pit/sync) ---
 const unsigned long DEBOUNCE_MS          = 25;    // Button debounce window
-const unsigned long CHARGE_TIME_MS       = 2000;  // Hold duration to fully charge crystal (2.0s)
+unsigned long chargeTimeMs               = 2000;  // Hold duration to fully charge crystal (2.0s)
 const unsigned long FLASH_DURATION_MS    = 120;   // Bright lock flash duration on full charge
 const unsigned long DECAY_TIME_MS        = 350;   // Early release fizzle/decay duration
-const unsigned long IDLE_TO_ATTRACT_MS   = 4000;  // Idle wait after release before returning to Attract
+unsigned long idleToAttractMs            = 4000;  // Idle wait after release before returning to Attract
 
 // --- Active Crystal & Deactivation Limits (Tunable Variables) ---
 int maxActivePerStation                  = 2;     // Maximum active stems on this 4-button station (set 1 to 4)
-const unsigned long TAP_CUT_MAX_MS       = 400;   // Max press duration to trigger Tap-to-Cut on an active button
+unsigned long tapCutMaxMs                = 400;   // Max press duration to trigger Tap-to-Cut on an active button
+float fallbackBeatMs                     = 500.0f; // Fallback beat period (120 BPM) if no OSC beat clock received
 
 // --- Attract Mode Cycle Timings ---
 const unsigned long ATTRACT_CYCLE_MS     = 16000; // Switch between Comet and In-Out every 16 seconds
@@ -252,7 +253,7 @@ void updateLighting(unsigned long now) {
     globalState = STATE_INTERACTIVE_MODE;
     demoActiveButton = -1; // Cancel any autonomous demo
   } else if (globalState == STATE_INTERACTIVE_MODE) {
-    if (now - lastGlobalActivityTime >= IDLE_TO_ATTRACT_MS) {
+    if (now - lastGlobalActivityTime >= idleToAttractMs) {
       globalState = STATE_ATTRACT_MODE;
       attractPhaseStartTime = now;
       for (int i = 0; i < 4; i++) BUTTONS[i].lightMode = LIGHT_ATTRACT;
@@ -333,7 +334,7 @@ void updateLighting(unsigned long now) {
     switch (BUTTONS[i].lightMode) {
       case LIGHT_CHARGING: {
         unsigned long holdDuration = now - BUTTONS[i].pressStartTime;
-        float progress = (float)holdDuration / (float)CHARGE_TIME_MS;
+        float progress = (float)holdDuration / (float)chargeTimeMs;
         if (progress > 1.0f) progress = 1.0f;
 
         // Subtle energetic shimmer/vibration that intensifies as charge nears 100%
@@ -344,7 +345,7 @@ void updateLighting(unsigned long now) {
         applyLedLinear(i, currentB);
 
         // Check if full charge reached (Step 2: Lock)
-        if (holdDuration >= CHARGE_TIME_MS) {
+        if (holdDuration >= chargeTimeMs) {
           // If already at maxActivePerStation, auto-swap the oldest active crystal
           int activeCount = 0;
           int oldestIdx = -1;
@@ -391,8 +392,8 @@ void updateLighting(unsigned long now) {
               beatDecay = (1.0f - ((float)beatElapsed / 250.0f)) * 0.30f;
             }
           } else {
-            // Local fallback 120 BPM beat pulse if no OSC clock received
-            float localBeat = fmod((float)now, 500.0f) / 500.0f;
+            // Local fallback beat pulse if no OSC clock received
+            float localBeat = fmod((float)now, fallbackBeatMs) / fallbackBeatMs;
             if (localBeat < 0.35f) {
               beatDecay = (1.0f - (localBeat / 0.35f)) * 0.20f;
             }
@@ -547,7 +548,7 @@ void loop() {
       } else {
         BUTTONS[idx].releaseTime = now;
         unsigned long pressHold = now - BUTTONS[idx].pressStartTime;
-        if (BUTTONS[idx].lightMode == LIGHT_LOCKED_ACTIVE && pressHold <= TAP_CUT_MAX_MS) {
+        if (BUTTONS[idx].lightMode == LIGHT_LOCKED_ACTIVE && pressHold <= tapCutMaxMs) {
           BUTTONS[idx].lightMode = LIGHT_DECAY;
           Serial.print("[Serial Tap to Cut] Button ");
           Serial.print(idx + 1);
@@ -592,6 +593,17 @@ void loop() {
             lastAckedSequence = ackSeq;
           }
         } else if (inMsg.match("/pit/sync")) {
+          // Optional smart config payload: [chargeMs, tapCutMs, idleToAttractMs, maxActive, bpm]
+          if (inMsg.isInt(0)) chargeTimeMs = (unsigned long)max(100, (int)inMsg.getInt(0));
+          if (inMsg.isInt(1)) tapCutMaxMs = (unsigned long)max(50, (int)inMsg.getInt(1));
+          if (inMsg.isInt(2)) idleToAttractMs = (unsigned long)max(500, (int)inMsg.getInt(2));
+          if (inMsg.isInt(3)) maxActivePerStation = constrain((int)inMsg.getInt(3), 1, 4);
+          if (inMsg.isFloat(4)) {
+            float bpm = constrain(inMsg.getFloat(4), 40.0f, 240.0f);
+            fallbackBeatMs = 60000.0f / bpm;
+          }
+          Serial.printf("<<< [Sync] charge=%lums tapCut=%lums idle=%lums maxActive=%d beatMs=%.1f\n",
+                        chargeTimeMs, tapCutMaxMs, idleToAttractMs, maxActivePerStation, fallbackBeatMs);
           triggerStateChange();
         } else if (inMsg.match("/pit/beat") || inMsg.match("/pit/clock/bar")) {
           lastBeatTickTime = now; // Synchronize beat pulses with Unreal Quartz clock
@@ -667,7 +679,7 @@ void loop() {
 
           unsigned long pressHold = now - BUTTONS[i].pressStartTime;
 
-          if (BUTTONS[i].lightMode == LIGHT_LOCKED_ACTIVE && pressHold <= TAP_CUT_MAX_MS) {
+          if (BUTTONS[i].lightMode == LIGHT_LOCKED_ACTIVE && pressHold <= tapCutMaxMs) {
             // TAP TO CUT: Quick tap on active button deactivates/cuts it!
             BUTTONS[i].lightMode = LIGHT_DECAY;
             Serial.print("[Tap to Cut] Button ");

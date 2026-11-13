@@ -23,8 +23,12 @@ public:
 	TObjectPtr<USceneComponent> CrystalRoot;
 
 	// --- Charge & Lifespan Thresholds ---
+	// When false, AHarmonicConvergenceAudioManager overrides ChargeThresholdSeconds at BeginPlay
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Crystal|Behavior")
+	bool bUseCustomChargeTime = false;
+
 	// Seconds of continuous charging required to ignite and lock in this crystal
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Crystal|Behavior", meta = (ClampMin = "0.1"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Crystal|Behavior", meta = (ClampMin = "0.1", EditCondition = "bUseCustomChargeTime"))
 	float ChargeThresholdSeconds = 2.0f;
 
 	// Charge rate multiplier applied while charging (1.0 = normal speed, higher = charges faster)

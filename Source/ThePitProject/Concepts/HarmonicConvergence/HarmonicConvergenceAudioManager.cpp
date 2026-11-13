@@ -83,10 +83,18 @@ void AHarmonicConvergenceAudioManager::BeginPlay()
 	{
 		if (Station)
 		{
+			if (!Station->bUseCustomTapCutDuration)
+			{
+				Station->TapCutMaxDurationSeconds = TapCutMaxDurationSeconds;
+			}
 			Station->InitializeAudioStem(MasterQuartzClock);
 			Station->OnStationPressedChanged.AddDynamic(this, &AHarmonicConvergenceAudioManager::HandleStationPressedChanged);
 			if (Station->CrystalActor)
 			{
+				if (!Station->CrystalActor->bUseCustomChargeTime)
+				{
+					Station->CrystalActor->ChargeThresholdSeconds = CrystalChargeTimeSeconds;
+				}
 				Station->CrystalActor->OnCrystalActivatedEvent.AddDynamic(this, &AHarmonicConvergenceAudioManager::HandleCrystalActivated);
 				Station->CrystalActor->OnCrystalExpiredEvent.AddDynamic(this, &AHarmonicConvergenceAudioManager::HandleCrystalExpired);
 			}
@@ -103,6 +111,8 @@ void AHarmonicConvergenceAudioManager::BeginPlay()
 			ProceduralSynthComponent->Start();
 		}
 	}
+
+	SyncHardwareConfig();
 }
 
 void AHarmonicConvergenceAudioManager::DiscoverStations()
@@ -142,6 +152,26 @@ void AHarmonicConvergenceAudioManager::SetMasterBPM(float NewBPM)
 	{
 		ProceduralSynthComponent->SetMasterBPM(MasterBPM);
 	}
+	SyncHardwareConfig();
+}
+
+void AHarmonicConvergenceAudioManager::SyncHardwareConfig()
+{
+	UGameInstance* GI = GetGameInstance();
+	UInputManagerSubSystem* InputSubsystem = GI ? GI->GetSubsystem<UInputManagerSubSystem>() : nullptr;
+	if (!InputSubsystem)
+	{
+		return;
+	}
+
+	FPitSyncConfig Config;
+	Config.ChargeTimeMs = FMath::Max(100, FMath::RoundToInt(CrystalChargeTimeSeconds * 1000.0f));
+	Config.TapCutMaxMs = FMath::Max(50, FMath::RoundToInt(TapCutMaxDurationSeconds * 1000.0f));
+	Config.IdleToAttractMs = FMath::Max(500, FMath::RoundToInt(AttractModeTimeoutSeconds * 1000.0f));
+	Config.MaxActivePerStation = FMath::Clamp(MaxActiveCrystalsPerStation, 1, 4);
+	Config.MasterBPM = MasterBPM;
+
+	InputSubsystem->SetSyncConfigAndSync(Config);
 }
 
 void AHarmonicConvergenceAudioManager::SetHarmonicScale(EHarmonicScaleMode NewScaleMode)

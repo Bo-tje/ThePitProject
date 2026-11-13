@@ -66,8 +66,12 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Station|Config")
 	float SpawnRate = 350.0f;
 
+	// When false, AHarmonicConvergenceAudioManager overrides TapCutMaxDurationSeconds at BeginPlay
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Station|Config")
+	bool bUseCustomTapCutDuration = false;
+
 	// Maximum press duration to register as a "Tap to Cut" deactivation on an already-active crystal
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Station|Config", meta = (ClampMin = "0.05", ClampMax = "1.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Station|Config", meta = (ClampMin = "0.05", ClampMax = "1.0", EditCondition = "bUseCustomTapCutDuration"))
 	float TapCutMaxDurationSeconds = 0.40f;
 
 	UFUNCTION(BlueprintCallable, CallInEditor, Category = "Station|Config")
