@@ -83,45 +83,116 @@ float FRhythmicPulseDSP::GenerateSample(float SampleRate, float ChordMultiplier,
 	}
 
 	const float InvSampleRate = 1.0f / SampleRate;
+	auto NextNoise = [&]() -> float
+	{
+		NoiseState ^= NoiseState << 13;
+		NoiseState ^= NoiseState >> 17;
+		NoiseState ^= NoiseState << 5;
+		return (static_cast<float>(NoiseState & 0xFFFF) / 32767.5f) - 1.0f;
+	};
+
 	float MonoSample = 0.0f;
 
 	switch (TimbreProfile)
 	{
 	case EVoiceTimbreProfile::SubBassPad:
 		{
-			Envelope = FMath::FInterpTo(Envelope, 0.0f, InvSampleRate, 5.5f);
-			PitchDecay = FMath::FInterpTo(PitchDecay, 0.0f, InvSampleRate, 26.0f);
+			if (SlotIndex == 0 || SlotIndex == 3 || BaseFrequencyHz < 80.0f)
+			{
+				// Punchy analog kick with transient click
+				Envelope = FMath::FInterpTo(Envelope, 0.0f, InvSampleRate, 6.0f);
+				PitchDecay = FMath::FInterpTo(PitchDecay, 0.0f, InvSampleRate, 28.0f);
 
-			const float KickFreqHz = 50.0f + 60.0f * PitchDecay;
-			PhaseAngle += (KickFreqHz * 2.0f * PI) * InvSampleRate;
-			if (PhaseAngle > 2.0f * PI) PhaseAngle -= 2.0f * PI;
+				const float KickFreqHz = 48.0f + 95.0f * PitchDecay;
+				PhaseAngle += (KickFreqHz * 2.0f * PI) * InvSampleRate;
+				if (PhaseAngle > 2.0f * PI) PhaseAngle -= 2.0f * PI;
 
-			const float SubSine = FMath::Sin(PhaseAngle);
-			const float SubHarmonic = FMath::Sin(PhaseAngle * 2.0f) * 0.15f;
-			MonoSample = (SubSine + SubHarmonic) * Envelope * SlotGain * 0.50f;
+				const float Click = NextNoise() * PitchDecay * 0.25f;
+				const float Body = FMath::Tanh((FMath::Sin(PhaseAngle) + FMath::Sin(PhaseAngle * 2.0f) * 0.18f) * 1.35f);
+				MonoSample = (Body * Envelope + Click) * SlotGain * 0.55f;
+			}
+			else if (SlotIndex % 4 == 2)
+			{
+				// Tight electronic snare / rim groove
+				Envelope = FMath::FInterpTo(Envelope, 0.0f, InvSampleRate, 11.0f);
+				PitchDecay = FMath::FInterpTo(PitchDecay, 0.0f, InvSampleRate, 32.0f);
+
+				const float SnareFreqHz = 165.0f + 120.0f * PitchDecay;
+				PhaseAngle += (SnareFreqHz * 2.0f * PI) * InvSampleRate;
+				if (PhaseAngle > 2.0f * PI) PhaseAngle -= 2.0f * PI;
+
+				const float Body = FMath::Sin(PhaseAngle) * PitchDecay * 0.5f;
+				const float Snap = NextNoise() * Envelope * 0.65f;
+				MonoSample = (Body + Snap) * SlotGain * 0.38f;
+			}
+			else
+			{
+				// Pitched FM bassline (octave-folded into 65..175 Hz so every station has a distinct bass note)
+				Envelope = FMath::FInterpTo(Envelope, 0.0f, InvSampleRate, 4.5f);
+				PitchDecay = FMath::FInterpTo(PitchDecay, 0.0f, InvSampleRate, 14.0f);
+
+				float BassFreq = BaseFrequencyHz * ChordMultiplier;
+				while (BassFreq > 175.0f) BassFreq *= 0.5f;
+				while (BassFreq < 55.0f) BassFreq *= 2.0f;
+
+				PhaseAngle += (BassFreq * 2.0f * PI) * InvSampleRate;
+				if (PhaseAngle > 2.0f * PI) PhaseAngle -= 2.0f * PI;
+				PhaseAngle2 += (BassFreq * 2.0f * 2.0f * PI) * InvSampleRate;
+				if (PhaseAngle2 > 2.0f * PI) PhaseAngle2 -= 2.0f * PI;
+
+				const float FmIndex = 0.4f + 1.4f * PitchDecay;
+				const float BassWave = FMath::Tanh(FMath::Sin(PhaseAngle + FmIndex * FMath::Sin(PhaseAngle2)) * 1.3f);
+				MonoSample = BassWave * Envelope * SlotGain * 0.42f;
+			}
 		}
 		break;
 
 	case EVoiceTimbreProfile::CrystallineChime:
 		{
-			Envelope = FMath::FInterpTo(Envelope, 0.0f, InvSampleRate, 12.0f);
-			PhaseAngle += (BaseFrequencyHz * 1.5f * 2.0f * PI) * InvSampleRate;
-			if (PhaseAngle > 2.0f * PI) PhaseAngle -= 2.0f * PI;
+			if (BaseFrequencyHz > 850.0f && (SlotIndex % 2 == 1))
+			{
+				// Crisp shaker / hi-hat transient + glassy ping
+				Envelope = FMath::FInterpTo(Envelope, 0.0f, InvSampleRate, 18.0f);
+				PhaseAngle += (BaseFrequencyHz * ChordMultiplier * 2.0f * PI) * InvSampleRate;
+				if (PhaseAngle > 2.0f * PI) PhaseAngle -= 2.0f * PI;
 
-			const float ChimeSample = FMath::Sin(PhaseAngle) * 0.65f + FMath::Sin(PhaseAngle * 2.76f) * 0.25f + FMath::Sin(PhaseAngle * 5.4f) * 0.10f;
-			MonoSample = ChimeSample * Envelope * SlotGain * 0.28f;
+				const float HatNoise = NextNoise() * 0.65f;
+				const float Ping = FMath::Sin(PhaseAngle) * 0.35f;
+				MonoSample = (HatNoise + Ping) * Envelope * SlotGain * 0.28f;
+			}
+			else
+			{
+				// Shimmering FM glass marimba / arp
+				Envelope = FMath::FInterpTo(Envelope, 0.0f, InvSampleRate, 5.5f);
+				PitchDecay = FMath::FInterpTo(PitchDecay, 0.0f, InvSampleRate, 16.0f);
+				const float EffectiveFreq = BaseFrequencyHz * ChordMultiplier;
+
+				PhaseAngle += (EffectiveFreq * 2.0f * PI) * InvSampleRate;
+				if (PhaseAngle > 2.0f * PI) PhaseAngle -= 2.0f * PI;
+				PhaseAngle2 += (EffectiveFreq * 3.0f * 2.0f * PI) * InvSampleRate;
+				if (PhaseAngle2 > 2.0f * PI) PhaseAngle2 -= 2.0f * PI;
+
+				const float Mod = (0.3f + 1.1f * PitchDecay) * FMath::Sin(PhaseAngle2);
+				const float ChimeSample = FMath::Sin(PhaseAngle + Mod) * 0.65f + FMath::Sin(PhaseAngle * 2.0f) * 0.25f + FMath::Sin(PhaseAngle * 4.0f) * 0.10f;
+				MonoSample = ChimeSample * Envelope * SlotGain * 0.30f;
+			}
 		}
 		break;
 
 	case EVoiceTimbreProfile::VortexSweep:
 		{
-			Envelope = FMath::FInterpTo(Envelope, 0.0f, InvSampleRate, 5.0f);
+			// Rising/falling FM harmonic sweep
+			Envelope = FMath::FInterpTo(Envelope, 0.0f, InvSampleRate, 2.8f);
+			PitchDecay = FMath::FInterpTo(PitchDecay, 0.0f, InvSampleRate, 4.5f);
 			const float EffectiveFreq = BaseFrequencyHz * ChordMultiplier;
 
 			PhaseAngle += (EffectiveFreq * 2.0f * PI) * InvSampleRate;
 			if (PhaseAngle > 2.0f * PI) PhaseAngle -= 2.0f * PI;
+			PhaseAngle2 += (EffectiveFreq * 1.5f * 2.0f * PI) * InvSampleRate;
+			if (PhaseAngle2 > 2.0f * PI) PhaseAngle2 -= 2.0f * PI;
 
-			const float Swirl = FMath::Sin(PhaseAngle) * 0.7f + FMath::Sin(PhaseAngle * 1.5f) * 0.3f;
+			const float SweepIndex = (1.0f - PitchDecay) * 2.2f + 0.3f;
+			const float Swirl = FMath::Sin(PhaseAngle + SweepIndex * FMath::Sin(PhaseAngle2)) * 0.7f + FMath::Sin(PhaseAngle * 2.0f) * 0.3f;
 			MonoSample = Swirl * Envelope * SlotGain * 0.32f;
 		}
 		break;
@@ -129,14 +200,19 @@ float FRhythmicPulseDSP::GenerateSample(float SampleRate, float ChordMultiplier,
 	case EVoiceTimbreProfile::WarmPad:
 	default:
 		{
-			Envelope = FMath::FInterpTo(Envelope, 0.0f, InvSampleRate, 9.0f);
+			// Sustained detuned chord pad (blooms across steps instead of decaying in 100ms)
+			Envelope = FMath::FInterpTo(Envelope, 0.0f, InvSampleRate, 1.4f);
 			const float EffectiveFreq = BaseFrequencyHz * ChordMultiplier;
 
 			PhaseAngle += (EffectiveFreq * 2.0f * PI) * InvSampleRate;
 			if (PhaseAngle > 2.0f * PI) PhaseAngle -= 2.0f * PI;
+			PhaseAngle2 += (EffectiveFreq * 1.006f * 2.0f * PI) * InvSampleRate;
+			if (PhaseAngle2 > 2.0f * PI) PhaseAngle2 -= 2.0f * PI;
 
-			const float WoodSample = FMath::Sin(PhaseAngle) * 0.78f + FMath::Sin(PhaseAngle * 3.0f) * 0.22f;
-			MonoSample = WoodSample * Envelope * SlotGain * 0.35f;
+			const float Detuned = (FMath::Sin(PhaseAngle) + FMath::Sin(PhaseAngle2)) * 0.42f;
+			const float Fifth = FMath::Sin(PhaseAngle * 1.5f) * 0.22f;
+			const float Warmth = FMath::Sin(PhaseAngle * 2.0f) * 0.14f;
+			MonoSample = FMath::Tanh((Detuned + Fifth + Warmth) * 1.2f) * Envelope * SlotGain * 0.34f;
 		}
 		break;
 	}
@@ -244,6 +320,7 @@ void UHarmonicConvergenceSynthComponent::SetRhythmicPulseSlot(int32 SlotIndex, b
 	FScopeLock Lock(&AudioLock);
 	if (SlotIndex >= 0 && SlotIndex < MaxRhythmicSlots)
 	{
+		RhythmicSlots[SlotIndex].SlotIndex = SlotIndex;
 		RhythmicSlots[SlotIndex].bIsActive = bActive;
 		RhythmicSlots[SlotIndex].RhythmicPatternMask = RhythmicMask;
 		RhythmicSlots[SlotIndex].BaseFrequencyHz = NoteFrequencyHz;

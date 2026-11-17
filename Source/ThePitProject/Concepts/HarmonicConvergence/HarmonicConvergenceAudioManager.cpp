@@ -130,11 +130,20 @@ void AHarmonicConvergenceAudioManager::DiscoverStations()
 				Stations.Add(Station);
 			}
 		}
-		Stations.Sort([](const AHarmonicStationActor& A, const AHarmonicStationActor& B)
-		{
-			return A.StationIndex < B.StationIndex;
-		});
 	}
+
+	for (AHarmonicStationActor* Station : Stations)
+	{
+		if (Station && (Station->ChannelName.IsNone() || Station->bAutoAssignAudioProfile))
+		{
+			Station->ApplyDefaultPresetForIndex();
+		}
+	}
+
+	Stations.Sort([](const AHarmonicStationActor& A, const AHarmonicStationActor& B)
+	{
+		return A.StationIndex < B.StationIndex;
+	});
 }
 
 void AHarmonicConvergenceAudioManager::SetMasterBPM(float NewBPM)
@@ -450,10 +459,11 @@ void AHarmonicConvergenceAudioManager::UpdateGameAndSound(float DeltaTime)
 		}
 	}
 
-	// Global Convergence Energy
+	// Global Convergence Energy (driven by both active locked-in crystals and currently held buttons)
 	const int32 TotalStations = FMath::Max(1, Stations.Num());
-	const float ActiveStationRatio = (ActiveVoiceCount > 0) ? (ActiveVoiceCount / static_cast<float>(TotalStations)) : 0.0f;
-	const float TargetConvergenceEnergy = FMath::Pow(ActiveStationRatio, 1.35f) * 2.0f * (1.0f + 0.35f * TotalModulationAccumulator);
+	const float EffectiveActiveCount = static_cast<float>(ActiveVoiceCount) + static_cast<float>(CurrentlyActiveLoopers) * 0.85f;
+	const float ActiveStationRatio = FMath::Clamp(EffectiveActiveCount / static_cast<float>(TotalStations), 0.0f, 1.5f);
+	const float TargetConvergenceEnergy = FMath::Pow(ActiveStationRatio, 1.15f) * 2.0f * (1.0f + 0.35f * TotalModulationAccumulator);
 	ConvergenceEnergy = FMath::FInterpTo(ConvergenceEnergy, TargetConvergenceEnergy, DeltaTime, 5.0f);
 
 	const float CoreBrightness = FMath::Pow(ConvergenceEnergy, 1.5f);

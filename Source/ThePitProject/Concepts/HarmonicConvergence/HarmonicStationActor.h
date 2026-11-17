@@ -74,6 +74,9 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Station|Config", meta = (ClampMin = "0.05", ClampMax = "1.0", EditCondition = "bUseCustomTapCutDuration"))
 	float TapCutMaxDurationSeconds = 0.40f;
 
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Station|Config")
+	bool bAutoAssignAudioProfile = true;
+
 	UFUNCTION(BlueprintCallable, CallInEditor, Category = "Station|Config")
 	void ApplyDefaultPresetForIndex();
 

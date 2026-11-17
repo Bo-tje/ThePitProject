@@ -26,7 +26,7 @@ AHarmonicStationActor::AHarmonicStationActor()
 void AHarmonicStationActor::OnConstruction(const FTransform& Transform)
 {
 	Super::OnConstruction(Transform);
-	if (ChannelName.IsNone())
+	if (ChannelName.IsNone() || bAutoAssignAudioProfile)
 	{
 		ApplyDefaultPresetForIndex();
 	}
@@ -34,6 +34,25 @@ void AHarmonicStationActor::OnConstruction(const FTransform& Transform)
 
 void AHarmonicStationActor::ApplyDefaultPresetForIndex()
 {
+	// If ChannelName is already set to "player1".."player24", derive StationIndex (0..23) from it
+	// so 4-button unit grouping (StationIndex / 4) and synth slots never collide.
+	if (!ChannelName.IsNone())
+	{
+		FString ChannelStr = ChannelName.ToString();
+		if (ChannelStr.StartsWith(TEXT("player"), ESearchCase::IgnoreCase))
+		{
+			ChannelStr.RightChopInline(6);
+			if (ChannelStr.IsNumeric())
+			{
+				const int32 PlayerNum = FCString::Atoi(*ChannelStr);
+				if (PlayerNum >= 1 && PlayerNum <= 24)
+				{
+					StationIndex = PlayerNum - 1;
+				}
+			}
+		}
+	}
+
 	struct FStationPreset
 	{
 		const TCHAR* Name;
@@ -81,17 +100,23 @@ void AHarmonicStationActor::ApplyDefaultPresetForIndex()
 	};
 
 	const int32 ClampedIdx = FMath::Clamp(StationIndex, 0, 23);
-	ChannelName = FName(Presets[ClampedIdx].Name);
+	if (ChannelName.IsNone())
+	{
+		ChannelName = FName(Presets[ClampedIdx].Name);
+	}
 	TimbreProfile = Presets[ClampedIdx].Timbre;
 	StreamColor = Presets[ClampedIdx].Color;
 	RhythmicPatternMask = Presets[ClampedIdx].PatternMask;
+	// Spread the 6 perimeter units around the stereo field (-0.85 .. +0.85)
+	const int32 UnitIdx = ClampedIdx / 4;
+	PanPosition = -0.85f + (static_cast<float>(UnitIdx) / 5.0f) * 1.70f;
 }
 
 void AHarmonicStationActor::BeginPlay()
 {
 	Super::BeginPlay();
 
-	if (ChannelName.IsNone())
+	if (ChannelName.IsNone() || bAutoAssignAudioProfile)
 	{
 		ApplyDefaultPresetForIndex();
 	}

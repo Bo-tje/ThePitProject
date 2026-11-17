@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 """
-Harmonic Convergence - 20-Station Interactive OSC Sound & Convergence Tester
+Harmonic Convergence - 24-Button Interactive OSC Sound & Convergence Tester
 Sends OSC messages to Unreal Engine 5 on Port 8000.
 
 Usage:
   python3 test_convergence.py              # Interactive Keyboard Mode (Play live)
-  python3 test_convergence.py chord        # Test 20-station massive orchestral cascade
+  python3 test_convergence.py chord        # Test 24-button massive orchestral cascade
   python3 test_convergence.py bass         # Test Sub-Bass Anchor stations
   python3 test_convergence.py chimes       # Test Crystalline High Chime stations
-  python3 test_convergence.py random       # Simulate 20 festival-goers walking up and pressing buttons
+  python3 test_convergence.py random       # Simulate 24-button festival crowd
 """
 
 import sys
@@ -30,6 +30,7 @@ else:
 
 OSC_TARGET_HOST = "127.0.0.1"
 OSC_TARGET_PORT = 8000
+TOTAL_BUTTONS = 24
 
 STATION_BUTTON_PRESSED = 1.0
 STATION_BUTTON_RELEASED = 0.0
@@ -56,26 +57,26 @@ def send_station_osc_event(station_channel_name: str, signal_value: float):
     print(f"  🎵 [{station_channel_name:<9}] = {signal_value:4.1f} ({event_state_label})")
 
 
-def test_20_station_cascade():
-    """Sequentially activates all 20 stations to test full orchestral harmonic convergence."""
-    print("\n--- Testing 20-Station Ambient Symphony (Cascade) ---")
-    for station_number in range(1, 21):
+def test_24_button_cascade():
+    """Sequentially activates all 24 buttons to test full orchestral harmonic convergence."""
+    print(f"\n--- Testing {TOTAL_BUTTONS}-Button Ambient Symphony (Cascade) ---")
+    for station_number in range(1, TOTAL_BUTTONS + 1):
         send_station_osc_event(f"player{station_number}", STATION_BUTTON_PRESSED)
         time.sleep(0.25)
 
-    print("  ✨ All 20 stations active - full 5-octave symphony resonating in center...")
+    print(f"  ✨ All {TOTAL_BUTTONS} buttons active - full 5-octave symphony resonating in center...")
     time.sleep(3.5)
 
-    for station_number in range(1, 21):
+    for station_number in range(1, TOTAL_BUTTONS + 1):
         send_station_osc_event(f"player{station_number}", STATION_BUTTON_RELEASED)
         time.sleep(0.1)
     print("Done.\n")
 
 
 def test_sub_bass_anchors():
-    """Tests the low-end grounding sub-bass stations (Stations 1, 5, 10, 16)."""
-    print("\n--- Testing Tier 1 (Sub-Bass Anchors: 1, 5, 10, 16) ---")
-    sub_bass_station_ids = [1, 5, 10, 16]
+    """Tests the low-end grounding sub-bass buttons (1, 5, 10, 16, 24)."""
+    print("\n--- Testing Tier 1 (Sub-Bass Anchors: 1, 5, 10, 16, 24) ---")
+    sub_bass_station_ids = [1, 5, 10, 16, 24]
     for station_id in sub_bass_station_ids:
         send_station_osc_event(f"player{station_id}", STATION_BUTTON_PRESSED)
         time.sleep(0.5)
@@ -88,9 +89,9 @@ def test_sub_bass_anchors():
 
 
 def test_crystalline_chimes():
-    """Tests the high sparkling chime stations (Stations 4, 7, 9, 12, 15, 18)."""
-    print("\n--- Testing Tier 3 (Crystalline High Chimes: 4, 7, 9, 12, 15, 18) ---")
-    for station_id in [4, 7, 9, 12, 15, 18]:
+    """Tests the high sparkling chime buttons (4, 7, 9, 12, 15, 18, 21)."""
+    print("\n--- Testing Tier 3 (Crystalline High Chimes: 4, 7, 9, 12, 15, 18, 21) ---")
+    for station_id in [4, 7, 9, 12, 15, 18, 21]:
         station_channel_name = f"player{station_id}"
         send_station_osc_event(station_channel_name, STATION_BUTTON_PRESSED)
         time.sleep(0.3)
@@ -100,13 +101,13 @@ def test_crystalline_chimes():
 
 
 def test_random_crowd_simulation():
-    """Simulates 20 festival visitors walking up to random stations over 15 seconds."""
-    print("\n--- Simulating 20 Festival-Goers Walking Up & Playing (15 Seconds) ---")
+    """Simulates festival visitors pressing random buttons across all 24 channels over 15 seconds."""
+    print(f"\n--- Simulating Festival-Goers Across {TOTAL_BUTTONS} Buttons (15 Seconds) ---")
     active_station_ids = set()
     simulation_start_time = time.time()
 
     while time.time() - simulation_start_time < 15.0:
-        chosen_station_id = random.randint(1, 20)
+        chosen_station_id = random.randint(1, TOTAL_BUTTONS)
         station_channel_name = f"player{chosen_station_id}"
 
         if chosen_station_id in active_station_ids:
@@ -126,9 +127,9 @@ def test_random_crowd_simulation():
 def run_interactive_keyboard_controller():
     """Provides a live keyboard interface to trigger and toggle individual stations or crowds."""
     print("\n" + "=" * 65)
-    print("  🎹 20-STATION INTERACTIVE HARMONIC CONVERGENCE KEYBOARD")
-    print("  Keys 1-9, 0: Toggle stations 1-10")
-    print("  Keys a-j:    Toggle stations 11-20")
+    print("  🎹 24-BUTTON INTERACTIVE HARMONIC CONVERGENCE KEYBOARD")
+    print("  Keys 1-9, 0: Toggle buttons 1-10")
+    print("  Keys a-n:    Toggle buttons 11-24")
     print("  'r' = Random Crowd | 'x' = All Off | 'q' = Quit")
     print("=" * 65)
 
@@ -136,10 +137,11 @@ def run_interactive_keyboard_controller():
         '1': 'player1',  '2': 'player2',  '3': 'player3',  '4': 'player4',  '5': 'player5',
         '6': 'player6',  '7': 'player7',  '8': 'player8',  '9': 'player9',  '0': 'player10',
         'a': 'player11', 'b': 'player12', 'c': 'player13', 'd': 'player14', 'e': 'player15',
-        'f': 'player16', 'g': 'player17', 'h': 'player18', 'i': 'player19', 'j': 'player20'
+        'f': 'player16', 'g': 'player17', 'h': 'player18', 'i': 'player19', 'j': 'player20',
+        'k': 'player21', 'l': 'player22', 'm': 'player23', 'n': 'player24',
     }
 
-    station_activation_states = {f"player{station_num}": False for station_num in range(1, 21)}
+    station_activation_states = {f"player{station_num}": False for station_num in range(1, TOTAL_BUTTONS + 1)}
     is_windows = sys.platform == "win32"
 
     if not is_windows:
@@ -173,7 +175,7 @@ def run_interactive_keyboard_controller():
                 new_signal = STATION_BUTTON_PRESSED if station_activation_states[target_channel] else STATION_BUTTON_RELEASED
                 send_station_osc_event(target_channel, new_signal)
             elif pressed_character == 'x':
-                for station_num in range(1, 21):
+                for station_num in range(1, TOTAL_BUTTONS + 1):
                     channel_name = f"player{station_num}"
                     station_activation_states[channel_name] = False
                     send_station_osc_event(channel_name, STATION_BUTTON_RELEASED)
@@ -186,15 +188,15 @@ def run_interactive_keyboard_controller():
     finally:
         if not is_windows:
             termios.tcsetattr(stdin_fileno, termios.TCSADRAIN, previous_terminal_settings)
-        for station_num in range(1, 21):
+        for station_num in range(1, TOTAL_BUTTONS + 1):
             send_station_osc_event(f"player{station_num}", STATION_BUTTON_RELEASED)
-        print("\nAll 20 station voices released. Goodbye!\n")
+        print(f"\nAll {TOTAL_BUTTONS} button voices released. Goodbye!\n")
 
 
 if __name__ == "__main__":
     selected_mode = sys.argv[1].lower() if len(sys.argv) > 1 else "interactive"
     if selected_mode in ("chord", "cascade"):
-        test_20_station_cascade()
+        test_24_button_cascade()
     elif selected_mode in ("bass", "subbass"):
         test_sub_bass_anchors()
     elif selected_mode in ("chimes", "chime"):

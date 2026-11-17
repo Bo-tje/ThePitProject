@@ -135,13 +135,20 @@ struct FRhythmicPulseDSP
 
 	float Envelope = 0.0f;
 	float PhaseAngle = 0.0f;
+	float PhaseAngle2 = 0.0f;
 	float PitchDecay = 0.0f;
+	int32 SlotIndex = 0;
+	uint32 NoiseState = 0x13579BDFu;
 
 	inline void Trigger()
 	{
 		Envelope = 1.0f;
 		PitchDecay = 1.0f;
-		PhaseAngle = 0.0f;
+		if (TimbreProfile != EVoiceTimbreProfile::WarmPad)
+		{
+			PhaseAngle = 0.0f;
+			PhaseAngle2 = 0.0f;
+		}
 	}
 
 	float GenerateSample(float SampleRate, float ChordMultiplier, float& OutLeftSample, float& OutRightSample);
@@ -162,7 +169,7 @@ public:
 	float SubBassDroneVolume = 0.08f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Harmonics|Audio", meta = (ClampMin = "100.0", ClampMax = "2000.0"))
-	float FilterBaselineCutoffHz = 350.0f;
+	float FilterBaselineCutoffHz = 950.0f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Harmonics|Audio", meta = (ClampMin = "0.5", ClampMax = "3.0"))
 	float FilterResonanceQ = 0.85f;
