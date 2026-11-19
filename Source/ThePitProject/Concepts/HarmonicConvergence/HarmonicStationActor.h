@@ -64,21 +64,29 @@ public:
 	TObjectPtr<UNiagaraSystem> StationBeamSystem = nullptr;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Station|Config")
-	float SpawnRate = 350.0f;
-
-	// When false, AHarmonicConvergenceAudioManager overrides TapCutMaxDurationSeconds at BeginPlay
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Station|Config")
-	bool bUseCustomTapCutDuration = false;
-
-	// Maximum press duration to register as a "Tap to Cut" deactivation on an already-active crystal
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Station|Config", meta = (ClampMin = "0.05", ClampMax = "1.0", EditCondition = "bUseCustomTapCutDuration"))
-	float TapCutMaxDurationSeconds = 0.40f;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Station|Config")
 	bool bAutoAssignAudioProfile = true;
 
 	UFUNCTION(BlueprintCallable, CallInEditor, Category = "Station|Config")
 	void ApplyDefaultPresetForIndex();
+
+	// --- Custom Overrides (Managed by AHarmonicConvergenceAudioManager unless enabled) ---
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Station|Custom Overrides")
+	bool bUseCustomSpawnRate = false;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Station|Custom Overrides", meta = (ClampMin = "0.0", EditCondition = "bUseCustomSpawnRate"))
+	float SpawnRate = 350.0f;
+
+	// Fraction of SpawnRate used as the trickle rate while crystal is active
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Station|Custom Overrides", meta = (ClampMin = "0.0", ClampMax = "1.0", EditCondition = "bUseCustomSpawnRate"))
+	float TrickleSpawnMultiplier = 0.20f;
+
+	// When false, AHarmonicConvergenceAudioManager overrides TapCutMaxDurationSeconds at BeginPlay
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Station|Custom Overrides")
+	bool bUseCustomTapCutDuration = false;
+
+	// Maximum press duration to register as a "Tap to Cut" deactivation on an already-active crystal
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Station|Custom Overrides", meta = (ClampMin = "0.05", ClampMax = "1.0", EditCondition = "bUseCustomTapCutDuration"))
+	float TapCutMaxDurationSeconds = 0.40f;
 
 	// --- Runtime State ---
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Station|Runtime")
@@ -86,9 +94,6 @@ public:
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Station|Runtime")
 	float LastPressTimestamp = 0.0f;
-
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Station|Runtime")
-	float CurrentPressure = 0.0f;
 
 	UPROPERTY(BlueprintAssignable, Category = "Station|Events")
 	FOnStationPressedChanged OnStationPressedChanged;
@@ -121,7 +126,4 @@ private:
 
 	UFUNCTION()
 	void HandleOSCButtonReleased(FName InChannel);
-
-	UFUNCTION()
-	void HandleOSCInputChanged(FName InChannel, float InputValue, float ValueDelta);
 };

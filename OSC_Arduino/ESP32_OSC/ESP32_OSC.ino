@@ -41,11 +41,11 @@ WiFiUDP Udp;
 // 2. Hardware Pinout & Timing Configuration
 // ============================================================================
 // 4 Microswitch inputs (Internal pullup to GND when pressed)
-const int BTN_PINS[4] = { 18, 19, 21, 22 };
+const int BTN_PINS[4] = { 21, 19, 18, 22 };
 
 // 4 MOSFET Gate control pins (PWM driven)
 // Note: Pins 25, 26, 27, 32 are all hardware PWM capable outputs (Avoid GPI 34-39 which are input-only!)
-const int LED_PINS[4] = { 25, 26, 27, 33 };
+const int LED_PINS[4] = { 27, 26, 25, 33 };
 
 // PWM Setup (1000 Hz = optimal for PC817 optocoupled MOSFET modules)
 const int PWM_FREQ       = 1000;

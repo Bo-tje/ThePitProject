@@ -14,23 +14,6 @@ AHarmonicConvergenceAudioManager::AHarmonicConvergenceAudioManager()
 	SetRootComponent(ProceduralSynthComponent);
 }
 
-int32 AHarmonicConvergenceAudioManager::GetCurrentChordProgressionIndex() const
-{
-	return ProceduralSynthComponent ? ProceduralSynthComponent->GetCurrentChordIndex() : 0;
-}
-
-AHarmonicStationActor* AHarmonicConvergenceAudioManager::FindStationByChannel(FName StationChannelName) const
-{
-	for (AHarmonicStationActor* Station : Stations)
-	{
-		if (Station && Station->ChannelName == StationChannelName)
-		{
-			return Station;
-		}
-	}
-	return nullptr;
-}
-
 AHarmonicStationActor* AHarmonicConvergenceAudioManager::FindStationByCrystal(const AHarmonicCrystalActor* Crystal) const
 {
 	if (!Crystal)
@@ -87,6 +70,15 @@ void AHarmonicConvergenceAudioManager::BeginPlay()
 			{
 				Station->TapCutMaxDurationSeconds = TapCutMaxDurationSeconds;
 			}
+			if (!Station->bUseCustomSpawnRate)
+			{
+				Station->SpawnRate = StationBeamSpawnRate;
+				Station->TrickleSpawnMultiplier = StationTrickleMultiplier;
+				if (Station->BeamComponent)
+				{
+					Station->BeamComponent->SetVariableFloat(FName(TEXT("User.myVortexForce")), Station->SpawnRate * 1.5f);
+				}
+			}
 			Station->InitializeAudioStem(MasterQuartzClock);
 			Station->OnStationPressedChanged.AddDynamic(this, &AHarmonicConvergenceAudioManager::HandleStationPressedChanged);
 			if (Station->CrystalActor)
@@ -94,6 +86,11 @@ void AHarmonicConvergenceAudioManager::BeginPlay()
 				if (!Station->CrystalActor->bUseCustomChargeTime)
 				{
 					Station->CrystalActor->ChargeThresholdSeconds = CrystalChargeTimeSeconds;
+				}
+				if (!Station->CrystalActor->bUseCustomActiveLifespan)
+				{
+					Station->CrystalActor->ActiveLifespanSeconds = CrystalActiveLifespanSeconds;
+					Station->CrystalActor->RemainingLifespan = CrystalActiveLifespanSeconds;
 				}
 				Station->CrystalActor->OnCrystalActivatedEvent.AddDynamic(this, &AHarmonicConvergenceAudioManager::HandleCrystalActivated);
 				Station->CrystalActor->OnCrystalExpiredEvent.AddDynamic(this, &AHarmonicConvergenceAudioManager::HandleCrystalExpired);
@@ -196,35 +193,49 @@ void AHarmonicConvergenceAudioManager::ApplyHarmonicScaleFrequencies()
 		return;
 	}
 
-	static constexpr float ScaleFreqs[5][24] = {
-		// PentatonicMajor
-		{ 65.41f, 196.00f, 293.66f, 783.99f, 130.81f, 329.63f, 987.77f, 392.00f, 1174.66f, 98.00f,
-		  440.00f, 1318.51f, 523.25f, 587.33f, 1567.98f, 196.00f, 659.25f, 2093.00f, 261.63f, 1046.50f,
-		  392.00f, 659.25f, 1318.51f, 196.00f },
-		// PentatonicMinor
-		{ 65.41f, 196.00f, 311.13f, 783.99f, 130.81f, 349.23f, 932.33f, 392.00f, 1244.51f, 98.00f,
-		  466.16f, 1396.91f, 523.25f, 622.25f, 1567.98f, 196.00f, 698.46f, 2093.00f, 261.63f, 1046.50f,
-		  392.00f, 622.25f, 1244.51f, 196.00f },
-		// LydianCelestial
-		{ 65.41f, 196.00f, 293.66f, 739.99f, 130.81f, 329.63f, 987.77f, 392.00f, 1174.66f, 98.00f,
-		  440.00f, 1479.98f, 523.25f, 587.33f, 1760.00f, 196.00f, 659.25f, 2093.00f, 261.63f, 1046.50f,
-		  440.00f, 739.99f, 1479.98f, 196.00f },
-		// HirajoshiLuminous
-		{ 65.41f, 196.00f, 277.18f, 783.99f, 130.81f, 349.23f, 880.00f, 392.00f, 1108.73f, 98.00f,
-		  415.30f, 1396.91f, 523.25f, 554.37f, 1567.98f, 196.00f, 698.46f, 2093.00f, 261.63f, 1046.50f,
-		  415.30f, 783.99f, 1396.91f, 196.00f },
-		// DorianAmbient
-		{ 65.41f, 196.00f, 293.66f, 783.99f, 130.81f, 329.63f, 932.33f, 392.00f, 1174.66f, 98.00f,
-		  440.00f, 1318.51f, 523.25f, 587.33f, 1567.98f, 196.00f, 659.25f, 2093.00f, 261.63f, 1046.50f,
-		  440.00f, 698.46f, 1396.91f, 196.00f }
+	// 7-note scale intervals in semitones relative to root (0..11)
+	static constexpr int32 ScaleLen = 7;
+	static constexpr int32 ScaleIntervals[4][ScaleLen] = {
+		{ 0, 2, 4, 6, 7, 9, 11 }, // LydianCelestial
+		{ 0, 2, 3, 5, 7, 9, 10 }, // DorianAmbient
+		{ 0, 2, 4, 5, 7, 9, 11 }, // IonianMajor
+		{ 0, 2, 3, 5, 7, 8, 10 }  // AeolianMinor
 	};
 
-	const int32 ModeIdx = FMath::Clamp(static_cast<int32>(ScaleMode), 0, 4);
+	int32 TableIdx = 0;
+	switch (ScaleMode)
+	{
+	case EHarmonicScaleMode::DorianAmbient:   TableIdx = 1; break;
+	case EHarmonicScaleMode::IonianMajor:     TableIdx = 2; break;
+	case EHarmonicScaleMode::AeolianMinor:    TableIdx = 3; break;
+	case EHarmonicScaleMode::LydianCelestial:
+	default:                                  TableIdx = 0; break;
+	}
+
+	if (ProceduralSynthComponent)
+	{
+		ProceduralSynthComponent->SetRootFrequencyHz(RootNoteFrequencyHz);
+	}
+
+	// Distribute 24 stations across open voicings spanning ~4 octaves (octaves 0..4 relative to RootNoteFrequencyHz)
+	static constexpr int32 StationOctaves[24] = {
+		0, 1, 2, 3,   // Unit 1: Low foundation to mid-high
+		1, 2, 3, 2,   // Unit 2: Bass & groove
+		3, 1, 2, 4,   // Unit 3: Chimes & pads
+		2, 2, 4, 1,   // Unit 4: Arps & harmonic pads
+		3, 4, 2, 3,   // Unit 5: Leads & sweeps
+		2, 3, 4, 1    // Unit 6: Shimmers & sub
+	};
+
 	for (AHarmonicStationActor* Station : Stations)
 	{
 		if (Station)
 		{
-			Station->BaseFrequencyHz = ScaleFreqs[ModeIdx][Station->StationIndex % 24];
+			const int32 Idx = Station->StationIndex % 24;
+			// Spread scale degrees across stations so neighbors form open fifths/thirds rather than clashing seconds
+			const int32 Degree = (Idx * 2) % ScaleLen;
+			const int32 TotalSemis = StationOctaves[Idx] * 12 + ScaleIntervals[TableIdx][Degree];
+			Station->BaseFrequencyHz = RootNoteFrequencyHz * FHarmonicChord::SemitonesToRatio(static_cast<float>(TotalSemis));
 		}
 	}
 }
@@ -407,14 +418,11 @@ void AHarmonicConvergenceAudioManager::UpdateGameAndSound(float DeltaTime)
 	int32 CurrentlyActiveLoopers = 0;
 	float TotalModulationAccumulator = 0.0f;
 
-	int32 StationActiveCounts[6] = {0, 0, 0, 0, 0, 0};
 	for (AHarmonicStationActor* Station : Stations)
 	{
 		if (Station && Station->IsCrystalActive())
 		{
 			CurrentlyActiveLoopers++;
-			const int32 UnitIdx = FMath::Clamp(Station->StationIndex / 4, 0, 5);
-			StationActiveCounts[UnitIdx]++;
 		}
 	}
 
@@ -444,10 +452,9 @@ void AHarmonicConvergenceAudioManager::UpdateGameAndSound(float DeltaTime)
 			}
 		}
 
-		if (Station->IsCrystalActive() && ProceduralSynthComponent && !Station->AudioStemAsset)
+		if (Station->IsCrystalActive() && ProceduralSynthComponent && !Station->AudioStemAsset && Station->CrystalActor->RemainingLifespan < 6.0f)
 		{
-			const float Remaining = Station->CrystalActor->RemainingLifespan;
-			const float AudioFadeAlpha = (Remaining < 6.0f) ? FMath::Clamp(Remaining / 6.0f, 0.0f, 1.0f) : 1.0f;
+			const float AudioFadeAlpha = FMath::Clamp(Station->CrystalActor->RemainingLifespan / 6.0f, 0.0f, 1.0f);
 			ProceduralSynthComponent->SetRhythmicPulseSlot(
 				Station->StationIndex,
 				true,
@@ -459,11 +466,16 @@ void AHarmonicConvergenceAudioManager::UpdateGameAndSound(float DeltaTime)
 		}
 	}
 
-	// Global Convergence Energy (driven by both active locked-in crystals and currently held buttons)
-	const int32 TotalStations = FMath::Max(1, Stations.Num());
-	const float EffectiveActiveCount = static_cast<float>(ActiveVoiceCount) + static_cast<float>(CurrentlyActiveLoopers) * 0.85f;
-	const float ActiveStationRatio = FMath::Clamp(EffectiveActiveCount / static_cast<float>(TotalStations), 0.0f, 1.5f);
-	const float TargetConvergenceEnergy = FMath::Pow(ActiveStationRatio, 1.15f) * 2.0f * (1.0f + 0.35f * TotalModulationAccumulator);
+	// Granular Convergence Energy: starts at BaseActiveIntensity (1.0) on first active crystal/button
+	// and steps up by IntensityStepPerCrystal (0.25) per additional active source up to 2.0
+	const int32 CombinedActiveSources = FMath::Max(ActiveVoiceCount, CurrentlyActiveLoopers);
+	float TargetConvergenceEnergy = 0.0f;
+	if (CombinedActiveSources > 0)
+	{
+		const float SteppedIntensity = BaseActiveIntensity + static_cast<float>(CombinedActiveSources - 1) * IntensityStepPerCrystal;
+		const float HoldBoost = (ActiveVoiceCount > 0) ? FMath::Min(0.25f, TotalModulationAccumulator * 0.1f) : 0.0f;
+		TargetConvergenceEnergy = FMath::Clamp(SteppedIntensity + HoldBoost, 0.0f, 2.0f);
+	}
 	ConvergenceEnergy = FMath::FInterpTo(ConvergenceEnergy, TargetConvergenceEnergy, DeltaTime, 5.0f);
 
 	const float CoreBrightness = FMath::Pow(ConvergenceEnergy, 1.5f);

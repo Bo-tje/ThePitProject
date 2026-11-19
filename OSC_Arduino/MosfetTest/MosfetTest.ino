@@ -14,7 +14,7 @@
 
 #include <Arduino.h>
 
-const int MOSFET_PIN     = 32;   // GPIO 32 (D32)
+const int MOSFET_PIN     = 33;   // GPIO 32 (D32)
 const int PWM_FREQ       = 1000; // 1000 Hz (Optimal for PC817 Optocouplers)
 const int PWM_RESOLUTION = 8;    // 8-bit resolution (0 - 255)
 

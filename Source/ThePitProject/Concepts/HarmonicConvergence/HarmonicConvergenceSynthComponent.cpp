@@ -73,7 +73,7 @@ float FConvergenceVoiceDSP::GenerateSample(float SampleRate, float ChordMultipli
 	return MonoVoiceSample;
 }
 
-float FRhythmicPulseDSP::GenerateSample(float SampleRate, float ChordMultiplier, float& OutLeftSample, float& OutRightSample)
+float FRhythmicPulseDSP::GenerateSample(float SampleRate, float ChordMultiplier, float ThirdRatio, float FifthRatio, float& OutLeftSample, float& OutRightSample)
 {
 	if (Envelope <= 0.0001f)
 	{
@@ -83,13 +83,6 @@ float FRhythmicPulseDSP::GenerateSample(float SampleRate, float ChordMultiplier,
 	}
 
 	const float InvSampleRate = 1.0f / SampleRate;
-	auto NextNoise = [&]() -> float
-	{
-		NoiseState ^= NoiseState << 13;
-		NoiseState ^= NoiseState >> 17;
-		NoiseState ^= NoiseState << 5;
-		return (static_cast<float>(NoiseState & 0xFFFF) / 32767.5f) - 1.0f;
-	};
 
 	float MonoSample = 0.0f;
 
@@ -107,7 +100,7 @@ float FRhythmicPulseDSP::GenerateSample(float SampleRate, float ChordMultiplier,
 				PhaseAngle += (KickFreqHz * 2.0f * PI) * InvSampleRate;
 				if (PhaseAngle > 2.0f * PI) PhaseAngle -= 2.0f * PI;
 
-				const float Click = NextNoise() * PitchDecay * 0.25f;
+				const float Click = FMath::FRandRange(-1.0f, 1.0f) * PitchDecay * 0.25f;
 				const float Body = FMath::Tanh((FMath::Sin(PhaseAngle) + FMath::Sin(PhaseAngle * 2.0f) * 0.18f) * 1.35f);
 				MonoSample = (Body * Envelope + Click) * SlotGain * 0.55f;
 			}
@@ -122,7 +115,7 @@ float FRhythmicPulseDSP::GenerateSample(float SampleRate, float ChordMultiplier,
 				if (PhaseAngle > 2.0f * PI) PhaseAngle -= 2.0f * PI;
 
 				const float Body = FMath::Sin(PhaseAngle) * PitchDecay * 0.5f;
-				const float Snap = NextNoise() * Envelope * 0.65f;
+				const float Snap = FMath::FRandRange(-1.0f, 1.0f) * Envelope * 0.65f;
 				MonoSample = (Body + Snap) * SlotGain * 0.38f;
 			}
 			else
@@ -151,49 +144,47 @@ float FRhythmicPulseDSP::GenerateSample(float SampleRate, float ChordMultiplier,
 		{
 			if (BaseFrequencyHz > 850.0f && (SlotIndex % 2 == 1))
 			{
-				// Crisp shaker / hi-hat transient + glassy ping
+				// Crisp shaker / hi-hat transient + glassy ping (stays in-key on BaseFrequencyHz)
 				Envelope = FMath::FInterpTo(Envelope, 0.0f, InvSampleRate, 18.0f);
-				PhaseAngle += (BaseFrequencyHz * ChordMultiplier * 2.0f * PI) * InvSampleRate;
+				PhaseAngle += (BaseFrequencyHz * 2.0f * PI) * InvSampleRate;
 				if (PhaseAngle > 2.0f * PI) PhaseAngle -= 2.0f * PI;
 
-				const float HatNoise = NextNoise() * 0.65f;
+				const float HatNoise = FMath::FRandRange(-1.0f, 1.0f) * 0.65f;
 				const float Ping = FMath::Sin(PhaseAngle) * 0.35f;
-				MonoSample = (HatNoise + Ping) * Envelope * SlotGain * 0.28f;
+				MonoSample = (HatNoise + Ping) * Envelope * SlotGain * 0.18f;
 			}
 			else
 			{
-				// Shimmering FM glass marimba / arp
-				Envelope = FMath::FInterpTo(Envelope, 0.0f, InvSampleRate, 5.5f);
+				// Shimmering FM glass marimba / arp (stays in-key on BaseFrequencyHz)
+				Envelope = FMath::FInterpTo(Envelope, 0.0f, InvSampleRate, 6.5f);
 				PitchDecay = FMath::FInterpTo(PitchDecay, 0.0f, InvSampleRate, 16.0f);
-				const float EffectiveFreq = BaseFrequencyHz * ChordMultiplier;
 
-				PhaseAngle += (EffectiveFreq * 2.0f * PI) * InvSampleRate;
+				PhaseAngle += (BaseFrequencyHz * 2.0f * PI) * InvSampleRate;
 				if (PhaseAngle > 2.0f * PI) PhaseAngle -= 2.0f * PI;
-				PhaseAngle2 += (EffectiveFreq * 3.0f * 2.0f * PI) * InvSampleRate;
+				PhaseAngle2 += (BaseFrequencyHz * 3.0f * 2.0f * PI) * InvSampleRate;
 				if (PhaseAngle2 > 2.0f * PI) PhaseAngle2 -= 2.0f * PI;
 
-				const float Mod = (0.3f + 1.1f * PitchDecay) * FMath::Sin(PhaseAngle2);
+				const float Mod = (0.25f + 0.85f * PitchDecay) * FMath::Sin(PhaseAngle2);
 				const float ChimeSample = FMath::Sin(PhaseAngle + Mod) * 0.65f + FMath::Sin(PhaseAngle * 2.0f) * 0.25f + FMath::Sin(PhaseAngle * 4.0f) * 0.10f;
-				MonoSample = ChimeSample * Envelope * SlotGain * 0.30f;
+				MonoSample = ChimeSample * Envelope * SlotGain * 0.22f;
 			}
 		}
 		break;
 
 	case EVoiceTimbreProfile::VortexSweep:
 		{
-			// Rising/falling FM harmonic sweep
-			Envelope = FMath::FInterpTo(Envelope, 0.0f, InvSampleRate, 2.8f);
+			// Rising/falling FM harmonic sweep (stays in-key on BaseFrequencyHz)
+			Envelope = FMath::FInterpTo(Envelope, 0.0f, InvSampleRate, 3.2f);
 			PitchDecay = FMath::FInterpTo(PitchDecay, 0.0f, InvSampleRate, 4.5f);
-			const float EffectiveFreq = BaseFrequencyHz * ChordMultiplier;
 
-			PhaseAngle += (EffectiveFreq * 2.0f * PI) * InvSampleRate;
+			PhaseAngle += (BaseFrequencyHz * 2.0f * PI) * InvSampleRate;
 			if (PhaseAngle > 2.0f * PI) PhaseAngle -= 2.0f * PI;
-			PhaseAngle2 += (EffectiveFreq * 1.5f * 2.0f * PI) * InvSampleRate;
+			PhaseAngle2 += (BaseFrequencyHz * 1.5f * 2.0f * PI) * InvSampleRate;
 			if (PhaseAngle2 > 2.0f * PI) PhaseAngle2 -= 2.0f * PI;
 
-			const float SweepIndex = (1.0f - PitchDecay) * 2.2f + 0.3f;
+			const float SweepIndex = (1.0f - PitchDecay) * 1.6f + 0.25f;
 			const float Swirl = FMath::Sin(PhaseAngle + SweepIndex * FMath::Sin(PhaseAngle2)) * 0.7f + FMath::Sin(PhaseAngle * 2.0f) * 0.3f;
-			MonoSample = Swirl * Envelope * SlotGain * 0.32f;
+			MonoSample = Swirl * Envelope * SlotGain * 0.22f;
 		}
 		break;
 
@@ -201,7 +192,7 @@ float FRhythmicPulseDSP::GenerateSample(float SampleRate, float ChordMultiplier,
 	default:
 		{
 			// Sustained detuned chord pad (blooms across steps instead of decaying in 100ms)
-			Envelope = FMath::FInterpTo(Envelope, 0.0f, InvSampleRate, 1.4f);
+			Envelope = FMath::FInterpTo(Envelope, 0.0f, InvSampleRate, 1.8f);
 			const float EffectiveFreq = BaseFrequencyHz * ChordMultiplier;
 
 			PhaseAngle += (EffectiveFreq * 2.0f * PI) * InvSampleRate;
@@ -209,10 +200,10 @@ float FRhythmicPulseDSP::GenerateSample(float SampleRate, float ChordMultiplier,
 			PhaseAngle2 += (EffectiveFreq * 1.006f * 2.0f * PI) * InvSampleRate;
 			if (PhaseAngle2 > 2.0f * PI) PhaseAngle2 -= 2.0f * PI;
 
-			const float Detuned = (FMath::Sin(PhaseAngle) + FMath::Sin(PhaseAngle2)) * 0.42f;
-			const float Fifth = FMath::Sin(PhaseAngle * 1.5f) * 0.22f;
-			const float Warmth = FMath::Sin(PhaseAngle * 2.0f) * 0.14f;
-			MonoSample = FMath::Tanh((Detuned + Fifth + Warmth) * 1.2f) * Envelope * SlotGain * 0.34f;
+			const float Detuned = (FMath::Sin(PhaseAngle) + FMath::Sin(PhaseAngle2)) * 0.36f;
+			const float Third = FMath::Sin(PhaseAngle * ThirdRatio) * 0.24f;
+			const float Fifth = FMath::Sin(PhaseAngle * FifthRatio) * 0.22f;
+			MonoSample = FMath::Tanh((Detuned + Third + Fifth) * 1.1f) * Envelope * SlotGain * 0.22f;
 		}
 		break;
 	}
@@ -229,6 +220,14 @@ UHarmonicConvergenceSynthComponent::UHarmonicConvergenceSynthComponent(const FOb
 {
 	NumChannels = 2;
 	bAutoActivate = true;
+
+	// Default 4-bar progression (Am -> F -> C -> G) expressed in relative semitones + chord qualities
+	ChordProgression = {
+		{  0, EHarmonicChordQuality::Minor, 0 },
+		{ -4, EHarmonicChordQuality::Major, 0 },
+		{  3, EHarmonicChordQuality::Major, 0 },
+		{ -2, EHarmonicChordQuality::Major, 0 }
+	};
 }
 
 bool UHarmonicConvergenceSynthComponent::Init(int32& SampleRate)
@@ -320,6 +319,7 @@ void UHarmonicConvergenceSynthComponent::SetRhythmicPulseSlot(int32 SlotIndex, b
 	FScopeLock Lock(&AudioLock);
 	if (SlotIndex >= 0 && SlotIndex < MaxRhythmicSlots)
 	{
+		const bool bWasActive = RhythmicSlots[SlotIndex].bIsActive;
 		RhythmicSlots[SlotIndex].SlotIndex = SlotIndex;
 		RhythmicSlots[SlotIndex].bIsActive = bActive;
 		RhythmicSlots[SlotIndex].RhythmicPatternMask = RhythmicMask;
@@ -327,6 +327,10 @@ void UHarmonicConvergenceSynthComponent::SetRhythmicPulseSlot(int32 SlotIndex, b
 		RhythmicSlots[SlotIndex].StereoPanPosition = FMath::Clamp(StereoPan, -1.0f, 1.0f);
 		RhythmicSlots[SlotIndex].TimbreProfile = TimbreProfile;
 		RhythmicSlots[SlotIndex].SlotGain = FMath::Clamp(Gain, 0.0f, 1.0f);
+		if (bActive && !bWasActive)
+		{
+			RhythmicSlots[SlotIndex].Trigger();
+		}
 	}
 }
 
@@ -374,18 +378,13 @@ int32 UHarmonicConvergenceSynthComponent::OnGenerateAudio(float* OutAudio, int32
 			if (CurrentBeatStep == 0)
 			{
 				CurrentMeasureIndex++;
-				if (bEnableChordProgression && CurrentMeasureIndex >= FMath::Max(1, BarsPerChord))
+				if (bEnableChordProgression && !ChordProgression.IsEmpty() && CurrentMeasureIndex >= FMath::Max(1, BarsPerChord))
 				{
 					CurrentMeasureIndex = 0;
-					CurrentChordIndex = (CurrentChordIndex + 1) % 4;
-
-					static constexpr float ChordScaleMultipliers[4] = {
-						1.0000000f, // Am (Root)
-						0.7937005f, // F  (-4 semitones)
-						1.1892071f, // C  (+3 semitones)
-						0.8908987f  // G  (-2 semitones)
-					};
-					TargetChordMultiplier = ChordScaleMultipliers[CurrentChordIndex];
+					CurrentChordIndex = (CurrentChordIndex + 1) % ChordProgression.Num();
+					const FHarmonicChord& ActiveChord = ChordProgression[CurrentChordIndex];
+					TargetChordMultiplier = FHarmonicChord::SemitonesToRatio(static_cast<float>(ActiveChord.RootSemitoneOffset));
+					ActiveChord.GetIntervalRatios(TargetThirdRatio, TargetFifthRatio);
 				}
 			}
 
@@ -400,6 +399,8 @@ int32 UHarmonicConvergenceSynthComponent::OnGenerateAudio(float* OutAudio, int32
 		}
 
 		CurrentChordMultiplier = FMath::FInterpTo(CurrentChordMultiplier, TargetChordMultiplier, InvSampleRate, 4.0f);
+		CurrentThirdRatio = FMath::FInterpTo(CurrentThirdRatio, TargetThirdRatio, InvSampleRate, 4.0f);
+		CurrentFifthRatio = FMath::FInterpTo(CurrentFifthRatio, TargetFifthRatio, InvSampleRate, 4.0f);
 
 		float AccumulatedLeftChannel = 0.0f;
 		float AccumulatedRightChannel = 0.0f;
@@ -414,8 +415,8 @@ int32 UHarmonicConvergenceSynthComponent::OnGenerateAudio(float* OutAudio, int32
 			AccumulatedRightChannel += VoiceRightSample * DynamicVoiceHeadroomScaling * 0.65f;
 		}
 
-		// 2. Central Grounding Root Sub-Bass Drone (65.4 Hz C2) + Overdrive Sub-Octave (32.7 Hz C1)
-		RootSubBassDronePhaseAngle += (65.41f * 2.0f * PI) * InvSampleRate;
+		// 2. Central Grounding Root Sub-Bass Drone + Overdrive Sub-Octave
+		RootSubBassDronePhaseAngle += (RootFrequencyHz * 2.0f * PI) * InvSampleRate;
 		if (RootSubBassDronePhaseAngle > 2.0f * PI) RootSubBassDronePhaseAngle -= 2.0f * PI;
 
 		const float SubBassDroneSample = FMath::Sin(RootSubBassDronePhaseAngle) * (CurrentConvergenceEnergy * SubBassDroneVolume);
@@ -427,12 +428,12 @@ int32 UHarmonicConvergenceSynthComponent::OnGenerateAudio(float* OutAudio, int32
 		int32 ActiveRhythmicSlotCount = 0;
 		for (int32 SlotIndex = 0; SlotIndex < MaxRhythmicSlots; ++SlotIndex)
 		{
-			if (RhythmicSlots[SlotIndex].Envelope > 0.0005f)
+			if (RhythmicSlots[SlotIndex].bIsActive || RhythmicSlots[SlotIndex].Envelope > 0.0005f)
 			{
 				ActiveRhythmicSlotCount++;
 			}
 		}
-		const float DynamicRhythmicHeadroom = (ActiveRhythmicSlotCount > 0) ? (1.0f / FMath::Sqrt(static_cast<float>(ActiveRhythmicSlotCount))) : 1.0f;
+		const float DynamicRhythmicHeadroom = (ActiveRhythmicSlotCount > 0) ? (1.0f / FMath::Pow(static_cast<float>(ActiveRhythmicSlotCount), 0.65f)) : 1.0f;
 
 		for (int32 SlotIndex = 0; SlotIndex < MaxRhythmicSlots; ++SlotIndex)
 		{
@@ -440,7 +441,7 @@ int32 UHarmonicConvergenceSynthComponent::OnGenerateAudio(float* OutAudio, int32
 			{
 				float PulseLeft = 0.0f;
 				float PulseRight = 0.0f;
-				RhythmicSlots[SlotIndex].GenerateSample(CurrentSampleRate, CurrentChordMultiplier, PulseLeft, PulseRight);
+				RhythmicSlots[SlotIndex].GenerateSample(CurrentSampleRate, CurrentChordMultiplier, CurrentThirdRatio, CurrentFifthRatio, PulseLeft, PulseRight);
 				AccumulatedLeftChannel += PulseLeft * DynamicRhythmicHeadroom;
 				AccumulatedRightChannel += PulseRight * DynamicRhythmicHeadroom;
 			}
@@ -484,18 +485,18 @@ int32 UHarmonicConvergenceSynthComponent::OnGenerateAudio(float* OutAudio, int32
 			AccumulatedRightChannel += ChimeSample;
 		}
 
-		// 5. Ambient Stereo Diffusion Reverb Tank
+		// 5. Ambient Stereo Diffusion Reverb Tank (kept controlled so busy mixes stay clear)
 		float ReverbWetLeftSample = 0.0f;
 		float ReverbWetRightSample = 0.0f;
-		const float ReverbFeedbackGain = 0.55f + 0.25f * FMath::Clamp(CurrentConvergenceEnergy * 0.4f, 0.0f, 1.0f) + OverdriveIntensity * 0.15f;
+		const float ReverbFeedbackGain = 0.45f + 0.18f * FMath::Clamp(CurrentConvergenceEnergy * 0.4f, 0.0f, 1.0f) + OverdriveIntensity * 0.08f;
 		DiffusionTank.Process(AccumulatedLeftChannel, AccumulatedRightChannel, ReverbFeedbackGain, ReverbWetLeftSample, ReverbWetRightSample);
 
-		const float ReverbWetMixRatio = 0.25f + 0.35f * FMath::Clamp(CurrentConvergenceEnergy * 0.5f, 0.0f, 1.0f) + OverdriveIntensity * 0.20f;
+		const float ReverbWetMixRatio = 0.18f + 0.14f * FMath::Clamp(CurrentConvergenceEnergy * 0.5f, 0.0f, 1.0f) + OverdriveIntensity * 0.06f;
 		const float FilterInputLeft = AccumulatedLeftChannel * (1.0f - ReverbWetMixRatio * 0.5f) + ReverbWetLeftSample * ReverbWetMixRatio;
 		const float FilterInputRight = AccumulatedRightChannel * (1.0f - ReverbWetMixRatio * 0.5f) + ReverbWetRightSample * ReverbWetMixRatio;
 
-		// 6. Dynamic Resonant Low-Pass Filter
-		const float FilterCutoffFrequencyHz = FMath::Clamp(FilterBaselineCutoffHz + MaxHoldModulation * 2400.0f + CurrentConvergenceEnergy * 5500.0f + OverdriveIntensity * 4500.0f, 150.0f, 18000.0f);
+		// 6. Dynamic Resonant Low-Pass Filter (opens smoothly without harsh high-end fizz)
+		const float FilterCutoffFrequencyHz = FMath::Clamp(FilterBaselineCutoffHz + MaxHoldModulation * 1800.0f + CurrentConvergenceEnergy * 2600.0f + OverdriveIntensity * 2500.0f, 150.0f, 12000.0f);
 		const float FilteredOutputLeft = LeftChannelFilter.Process(FilterInputLeft, FilterCutoffFrequencyHz, FilterResonanceQ, CurrentSampleRate);
 		const float FilteredOutputRight = RightChannelFilter.Process(FilterInputRight, FilterCutoffFrequencyHz, FilterResonanceQ, CurrentSampleRate);
 

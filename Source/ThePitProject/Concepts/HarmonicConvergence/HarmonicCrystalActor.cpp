@@ -71,7 +71,7 @@ void AHarmonicCrystalActor::Tick(float DeltaTime)
 
 	if (bIsCharging)
 	{
-		const float EffectiveChargeRate = (1.0f / FMath::Max(0.1f, ChargeThresholdSeconds)) * ChargeRate;
+		const float EffectiveChargeRate = 1.0f / FMath::Max(0.1f, ChargeThresholdSeconds);
 		ChargeProgress = FMath::Clamp(ChargeProgress + DeltaTime * EffectiveChargeRate, 0.0f, 1.0f);
 		OnCrystalCharge(ChargeProgress, CrystalColor);
 
@@ -94,6 +94,10 @@ void AHarmonicCrystalActor::Tick(float DeltaTime)
 	else if (bIsActive)
 	{
 		RemainingLifespan -= DeltaTime;
+		if (RemainingLifespan < 6.0f && RemainingLifespan > 0.0f)
+		{
+			OnCrystalCharge(RemainingLifespan / 6.0f, CrystalColor);
+		}
 		if (RemainingLifespan <= 0.0f)
 		{
 			bIsActive = false;

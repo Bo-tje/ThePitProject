@@ -22,23 +22,24 @@ public:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Crystal|Components")
 	TObjectPtr<USceneComponent> CrystalRoot;
 
-	// --- Charge & Lifespan Thresholds ---
+	// --- Custom Overrides (Managed by AHarmonicConvergenceAudioManager unless enabled) ---
 	// When false, AHarmonicConvergenceAudioManager overrides ChargeThresholdSeconds at BeginPlay
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Crystal|Behavior")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Crystal|Custom Overrides")
 	bool bUseCustomChargeTime = false;
 
 	// Seconds of continuous charging required to ignite and lock in this crystal
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Crystal|Behavior", meta = (ClampMin = "0.1", EditCondition = "bUseCustomChargeTime"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Crystal|Custom Overrides", meta = (ClampMin = "0.1", EditCondition = "bUseCustomChargeTime"))
 	float ChargeThresholdSeconds = 2.0f;
 
-	// Charge rate multiplier applied while charging (1.0 = normal speed, higher = charges faster)
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Crystal|Behavior", meta = (ClampMin = "0.01"))
-	float ChargeRate = 1.0f;
+	// When false, AHarmonicConvergenceAudioManager overrides ActiveLifespanSeconds at BeginPlay
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Crystal|Custom Overrides")
+	bool bUseCustomActiveLifespan = false;
 
 	// Seconds this crystal stays active and looping before expiring
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Crystal|Behavior", meta = (ClampMin = "1.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Crystal|Custom Overrides", meta = (ClampMin = "1.0", EditCondition = "bUseCustomActiveLifespan"))
 	float ActiveLifespanSeconds = 45.0f;
 
+	// --- Charge & Lifespan Thresholds ---
 	// Interpolation speed at which uncharged or expired crystal energy decays back to 0
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Crystal|Behavior", meta = (ClampMin = "0.01"))
 	float ChargeDecayRate = 2.0f;

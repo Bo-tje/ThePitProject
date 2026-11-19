@@ -155,7 +155,6 @@ void AHarmonicStationActor::BeginPlay()
 		{
 			InputSubsystem->OnButtonPressed.AddDynamic(this, &AHarmonicStationActor::HandleOSCButtonPressed);
 			InputSubsystem->OnButtonReleased.AddDynamic(this, &AHarmonicStationActor::HandleOSCButtonReleased);
-			InputSubsystem->OnInputChanged.AddDynamic(this, &AHarmonicStationActor::HandleOSCInputChanged);
 		}
 	}
 }
@@ -168,7 +167,6 @@ void AHarmonicStationActor::EndPlay(const EEndPlayReason::Type EndPlayReason)
 		{
 			InputSubsystem->OnButtonPressed.RemoveDynamic(this, &AHarmonicStationActor::HandleOSCButtonPressed);
 			InputSubsystem->OnButtonReleased.RemoveDynamic(this, &AHarmonicStationActor::HandleOSCButtonReleased);
-			InputSubsystem->OnInputChanged.RemoveDynamic(this, &AHarmonicStationActor::HandleOSCInputChanged);
 		}
 	}
 	if (BeamComponent)
@@ -195,14 +193,6 @@ void AHarmonicStationActor::HandleOSCButtonReleased(FName InChannel)
 	}
 }
 
-void AHarmonicStationActor::HandleOSCInputChanged(FName InChannel, float InputValue, float ValueDelta)
-{
-	if (InChannel == ChannelName)
-	{
-		CurrentPressure = FMath::Clamp(InputValue, 0.0f, 1.0f);
-	}
-}
-
 void AHarmonicStationActor::SetPressed(bool bNewPressed)
 {
 	if (bIsPressed == bNewPressed)
@@ -211,7 +201,6 @@ void AHarmonicStationActor::SetPressed(bool bNewPressed)
 	}
 
 	bIsPressed = bNewPressed;
-	CurrentPressure = bIsPressed ? 1.0f : 0.0f;
 
 	const float CurrentTime = GetWorld() ? GetWorld()->GetTimeSeconds() : 0.0f;
 
@@ -248,7 +237,7 @@ void AHarmonicStationActor::SetPressed(bool bNewPressed)
 		}
 		else
 		{
-			BeamComponent->SetVariableFloat(FName(TEXT("User.mySpawnRate")), 0.0f);
+			BeamComponent->SetVariableFloat(FName(TEXT("User.mySpawnRate")), IsCrystalActive() ? SpawnRate * TrickleSpawnMultiplier : 0.0f);
 		}
 	}
 
@@ -294,6 +283,10 @@ void AHarmonicStationActor::UpdateBeamAndStem(float DeltaTime, float Convergence
 		BeamComponent->SetVariableInt(FName(TEXT("User.ActiveStationCount")), ActiveStationCount);
 		BeamComponent->SetVariableFloat(FName(TEXT("User.CoreBrightness")), CoreBrightness);
 		BeamComponent->SetVariableFloat(FName(TEXT("User.VoiceModulation")), bIsPressed ? Charge : 0.0f);
+		if (!bIsPressed)
+		{
+			BeamComponent->SetVariableFloat(FName(TEXT("User.mySpawnRate")), IsCrystalActive() ? SpawnRate * TrickleSpawnMultiplier : 0.0f);
+		}
 	}
 
 	if (StemAudioComponent)

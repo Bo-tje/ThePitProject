@@ -32,7 +32,18 @@ public:
 
 	// --- Game & Harmony Setup ---
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Harmonics|Setup")
-	EHarmonicScaleMode ScaleMode = EHarmonicScaleMode::PentatonicMajor;
+	EHarmonicScaleMode ScaleMode = EHarmonicScaleMode::LydianCelestial;
+
+	// Root note frequency in Hz (default 65.41 Hz = C2); all scale pitches are computed as semitone intervals from this root
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Harmonics|Setup", meta = (ClampMin = "32.0", ClampMax = "261.63"))
+	float RootNoteFrequencyHz = 65.41f;
+
+	// Granular intensity: starts at BaseActiveIntensity (0.5) on first active crystal/button and steps up by IntensityStepPerCrystal (0.20) up to 2.0
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Harmonics|Setup", meta = (ClampMin = "0.25", ClampMax = "1.5"))
+	float BaseActiveIntensity = 0.5f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Harmonics|Setup", meta = (ClampMin = "0.05", ClampMax = "1.0"))
+	float IntensityStepPerCrystal = 0.20f;
 
 	// Placed AHarmonicStationActor instances in the level (auto-discovered on BeginPlay if left empty)
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Harmonics|Setup")
@@ -62,8 +73,18 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Harmonics|Setup", meta = (ClampMin = "0.1"))
 	float CrystalChargeTimeSeconds = 2.0f;
 
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Harmonics|Setup", meta = (ClampMin = "1.0"))
+	float CrystalActiveLifespanSeconds = 45.0f;
+
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Harmonics|Setup", meta = (ClampMin = "0.05", ClampMax = "1.0"))
 	float TapCutMaxDurationSeconds = 0.40f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Harmonics|Setup", meta = (ClampMin = "0.0"))
+	float StationBeamSpawnRate = 350.0f;
+
+	// Fraction of StationBeamSpawnRate used as the trickle rate while a crystal is active
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Harmonics|Setup", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	float StationTrickleMultiplier = 0.20f;
 
 	UFUNCTION(BlueprintCallable, Category = "Harmonics|Setup")
 	void SyncHardwareConfig();
@@ -126,9 +147,6 @@ public:
 	FVector GetCenterLocation() const { return GetActorLocation(); }
 
 	UFUNCTION(BlueprintPure, Category = "Harmonics|Query")
-	AHarmonicStationActor* FindStationByChannel(FName StationChannelName) const;
-
-	UFUNCTION(BlueprintPure, Category = "Harmonics|Query")
 	AHarmonicStationActor* FindStationByCrystal(const AHarmonicCrystalActor* Crystal) const;
 
 	UFUNCTION(BlueprintPure, Category = "Harmonics|Overdrive")
@@ -136,9 +154,6 @@ public:
 
 	UFUNCTION(BlueprintPure, Category = "Harmonics|Overdrive")
 	float GetOverdriveIntensity() const { return OverdriveIntensity; }
-
-	UFUNCTION(BlueprintPure, Category = "Harmonics|Harmony")
-	int32 GetCurrentChordProgressionIndex() const;
 
 	UFUNCTION(BlueprintCallable, Category = "Harmonics|Beat")
 	void ClearAllBeatSlots();

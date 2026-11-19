@@ -138,7 +138,6 @@ struct FRhythmicPulseDSP
 	float PhaseAngle2 = 0.0f;
 	float PitchDecay = 0.0f;
 	int32 SlotIndex = 0;
-	uint32 NoiseState = 0x13579BDFu;
 
 	inline void Trigger()
 	{
@@ -151,7 +150,7 @@ struct FRhythmicPulseDSP
 		}
 	}
 
-	float GenerateSample(float SampleRate, float ChordMultiplier, float& OutLeftSample, float& OutRightSample);
+	float GenerateSample(float SampleRate, float ChordMultiplier, float ThirdRatio, float FifthRatio, float& OutLeftSample, float& OutRightSample);
 };
 
 UCLASS(ClassGroup = (Custom), meta = (BlueprintSpawnableComponent))
@@ -169,7 +168,7 @@ public:
 	float SubBassDroneVolume = 0.08f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Harmonics|Audio", meta = (ClampMin = "100.0", ClampMax = "2000.0"))
-	float FilterBaselineCutoffHz = 950.0f;
+	float FilterBaselineCutoffHz = 750.0f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Harmonics|Audio", meta = (ClampMin = "0.5", ClampMax = "3.0"))
 	float FilterResonanceQ = 0.85f;
@@ -213,6 +212,9 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Harmonics|Synth")
 	void SetMasterBPM(float NewBPM) { MasterTempoBPM = FMath::Clamp(NewBPM, 40.0f, 200.0f); }
 
+	UFUNCTION(BlueprintCallable, Category = "Harmonics|Synth")
+	void SetRootFrequencyHz(float NewRootFreqHz) { RootFrequencyHz = FMath::Clamp(NewRootFreqHz, 32.0f, 261.63f); }
+
 	UFUNCTION(BlueprintPure, Category = "Harmonics|Synth")
 	int32 GetCurrentBeatStep() const { return CurrentBeatStep; }
 
@@ -222,11 +224,11 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Harmonics|Audio", meta = (ClampMin = "1", ClampMax = "16"))
 	int32 BarsPerChord = 4;
 
-	UFUNCTION(BlueprintPure, Category = "Harmonics|Synth")
-	int32 GetCurrentChordIndex() const { return CurrentChordIndex; }
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Harmonics|Harmony")
+	TArray<FHarmonicChord> ChordProgression;
 
 	UFUNCTION(BlueprintPure, Category = "Harmonics|Synth")
-	float GetCurrentChordMultiplier() const { return CurrentChordMultiplier; }
+	int32 GetCurrentChordIndex() const { return CurrentChordIndex; }
 
 protected:
 	virtual bool Init(int32& SampleRate) override;
@@ -243,6 +245,7 @@ private:
 	float BeatClockPhase = 0.0f;
 	int32 CurrentBeatStep = 0;
 
+	float RootFrequencyHz = 65.41f;
 	float RootSubBassDronePhaseAngle = 0.0f;
 	float TargetConvergenceEnergy = 0.0f;
 	float CurrentConvergenceEnergy = 0.0f;
@@ -264,6 +267,10 @@ private:
 	int32 CurrentChordIndex = 0;
 	float TargetChordMultiplier = 1.0f;
 	float CurrentChordMultiplier = 1.0f;
+	float TargetThirdRatio = 1.1892071f;
+	float CurrentThirdRatio = 1.1892071f;
+	float TargetFifthRatio = 1.4983071f;
+	float CurrentFifthRatio = 1.4983071f;
 
 	FConvergenceResonantFilter LeftChannelFilter;
 	FConvergenceResonantFilter RightChannelFilter;
