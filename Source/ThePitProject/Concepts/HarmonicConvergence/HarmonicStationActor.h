@@ -9,9 +9,6 @@
 class USceneComponent;
 class UNiagaraSystem;
 class UNiagaraComponent;
-class UAudioComponent;
-class USoundWave;
-class UQuartzClockHandle;
 class AHarmonicStationActor;
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnStationPressedChanged, AHarmonicStationActor*, Station, bool, bPressed);
@@ -45,6 +42,12 @@ public:
 	EVoiceTimbreProfile TimbreProfile = EVoiceTimbreProfile::SubBassPad;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Station|Config")
+	EChordVoiceRole ChordVoiceRole = EChordVoiceRole::LowestVoice;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Station|Config", meta = (ClampMin = "0", ClampMax = "4"))
+	int32 OctaveOffset = 2;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Station|Config")
 	float BaseFrequencyHz = 261.63f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Station|Config", meta = (ClampMin = "-1.0", ClampMax = "1.0"))
@@ -52,9 +55,6 @@ public:
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Station|Config")
 	int32 RhythmicPatternMask = 0x1111;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Station|Config")
-	TObjectPtr<USoundWave> AudioStemAsset = nullptr;
 
 	// Linked AHarmonicCrystalActor in the scene
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Station|Config")
@@ -80,12 +80,8 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Station|Custom Overrides", meta = (ClampMin = "0.0", ClampMax = "1.0", EditCondition = "bUseCustomSpawnRate"))
 	float TrickleSpawnMultiplier = 0.20f;
 
-	// When false, AHarmonicConvergenceAudioManager overrides TapCutMaxDurationSeconds at BeginPlay
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Station|Custom Overrides")
-	bool bUseCustomTapCutDuration = false;
-
-	// Maximum press duration to register as a "Tap to Cut" deactivation on an already-active crystal
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Station|Custom Overrides", meta = (ClampMin = "0.05", ClampMax = "1.0", EditCondition = "bUseCustomTapCutDuration"))
+	// Maximum press duration to register as a "Tap to Cut" deactivation on an already-active crystal (synced from AudioManager)
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Station|Behavior")
 	float TapCutMaxDurationSeconds = 0.40f;
 
 	// --- Runtime State ---
@@ -101,9 +97,6 @@ public:
 	UPROPERTY(Transient)
 	TObjectPtr<UNiagaraComponent> BeamComponent;
 
-	UPROPERTY(Transient)
-	TObjectPtr<UAudioComponent> StemAudioComponent;
-
 	UFUNCTION(BlueprintCallable, Category = "Station")
 	void SetPressed(bool bNewPressed);
 
@@ -116,9 +109,7 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Station")
 	bool IsCrystalActive() const { return CrystalActor && CrystalActor->bIsActive; }
 
-	void InitializeAudioStem(UQuartzClockHandle* MasterClock);
-	void UpdateBeamAndStem(float DeltaTime, float ConvergenceEnergy, int32 ActiveStationCount, float CoreBrightness);
-	void ResetStation();
+	void UpdateBeam();
 
 private:
 	UFUNCTION()

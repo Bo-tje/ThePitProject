@@ -7,17 +7,7 @@
 #include "HarmonicConvergenceAudioManager.generated.h"
 
 class UHarmonicConvergenceSynthComponent;
-class UQuartzClockHandle;
 class AHarmonicCrystalActor;
-
-DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnStationVoiceStarted, FName, StationChannelName, float, NoteFrequencyHz);
-DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnStationVoiceStopped, FName, StationChannelName);
-DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnAttractPingTriggered, FName, StationChannelName, float, ChimeFrequencyHz);
-DECLARE_DYNAMIC_MULTICAST_DELEGATE_ThreeParams(FOnPersistentBeatActivated, FName, StationChannelName, int32, BeatStep, float, NoteFrequencyHz);
-DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnPersistentBeatDeactivated, int32, SlotIndex);
-DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnHarmonicOverdriveStateChanged, bool, bIsOverdrive, float, OverdriveIntensity);
-DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnCrystalEchoRippleTriggered, int32, StationIndex, FVector, WorldLocation);
-DECLARE_DYNAMIC_MULTICAST_DELEGATE_ThreeParams(FOnStationBeatPulse, int32, StationIndex, float, PulseIntensity, FLinearColor, StationColor);
 
 UCLASS(Blueprintable, BlueprintType)
 class THEPITPROJECT_API AHarmonicConvergenceAudioManager : public AActor
@@ -53,9 +43,6 @@ public:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Harmonics|Audio")
 	TObjectPtr<UHarmonicConvergenceSynthComponent> ProceduralSynthComponent;
 
-	UPROPERTY(Transient, VisibleAnywhere, BlueprintReadOnly, Category = "Harmonics|Audio")
-	TObjectPtr<UQuartzClockHandle> MasterQuartzClock;
-
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Harmonics|Setup")
 	float MasterBPM = 120.0f;
 
@@ -69,7 +56,7 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Harmonics|Setup", meta = (ClampMin = "1", ClampMax = "4"))
 	int32 MaxActiveCrystalsPerStation = 2;
 
-	// --- Hardware Sync Defaults (Applied to all non-custom Stations/Crystals & ESP32s) ---
+	// --- Hardware Sync Defaults (Applied to Stations/Crystals & ESP32s) ---
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Harmonics|Setup", meta = (ClampMin = "0.1"))
 	float CrystalChargeTimeSeconds = 2.0f;
 
@@ -108,55 +95,12 @@ public:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Harmonics|Overdrive")
 	bool bIsHarmonicOverdrive = false;
 
-	// --- Events ---
-	UPROPERTY(BlueprintAssignable, Category = "Harmonics|Events")
-	FOnStationVoiceStarted OnStationVoiceStarted;
-
-	UPROPERTY(BlueprintAssignable, Category = "Harmonics|Events")
-	FOnStationVoiceStopped OnStationVoiceStopped;
-
-	UPROPERTY(BlueprintAssignable, Category = "Harmonics|Events")
-	FOnAttractPingTriggered OnAttractPingTriggered;
-
-	UPROPERTY(BlueprintAssignable, Category = "Harmonics|Events")
-	FOnPersistentBeatActivated OnPersistentBeatActivated;
-
-	UPROPERTY(BlueprintAssignable, Category = "Harmonics|Events")
-	FOnPersistentBeatDeactivated OnPersistentBeatDeactivated;
-
-	UPROPERTY(BlueprintAssignable, Category = "Harmonics|Events")
-	FOnHarmonicOverdriveStateChanged OnHarmonicOverdriveStateChanged;
-
-	UPROPERTY(BlueprintAssignable, Category = "Harmonics|Events")
-	FOnCrystalEchoRippleTriggered OnCrystalEchoRippleTriggered;
-
-	UPROPERTY(BlueprintAssignable, Category = "Harmonics|Events")
-	FOnStationBeatPulse OnStationBeatPulse;
-
 	// --- Control & Queries ---
 	UFUNCTION(BlueprintCallable, Category = "Harmonics|Control")
 	void SetHarmonicScale(EHarmonicScaleMode NewScaleMode);
 
 	UFUNCTION(BlueprintPure, Category = "Harmonics|Query")
-	int32 GetActiveVoiceCount() const { return ActiveVoiceCount; }
-
-	UFUNCTION(BlueprintPure, Category = "Harmonics|Query")
-	float GetConvergenceEnergy() const { return ConvergenceEnergy; }
-
-	UFUNCTION(BlueprintPure, Category = "Harmonics|Query")
-	FVector GetCenterLocation() const { return GetActorLocation(); }
-
-	UFUNCTION(BlueprintPure, Category = "Harmonics|Query")
 	AHarmonicStationActor* FindStationByCrystal(const AHarmonicCrystalActor* Crystal) const;
-
-	UFUNCTION(BlueprintPure, Category = "Harmonics|Overdrive")
-	bool IsHarmonicOverdrive() const { return bIsHarmonicOverdrive; }
-
-	UFUNCTION(BlueprintPure, Category = "Harmonics|Overdrive")
-	float GetOverdriveIntensity() const { return OverdriveIntensity; }
-
-	UFUNCTION(BlueprintCallable, Category = "Harmonics|Beat")
-	void ClearAllBeatSlots();
 
 protected:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Harmonics|Runtime")
@@ -174,6 +118,7 @@ protected:
 private:
 	void DiscoverStations();
 	void ApplyHarmonicScaleFrequencies();
+	EChordVoiceRole GetEffectiveVoiceRole(const AHarmonicStationActor* Station) const;
 	void UpdateGameAndSound(float DeltaTime);
 	void UpdateAttractMode(float DeltaTime, int32 ActiveLoopers);
 

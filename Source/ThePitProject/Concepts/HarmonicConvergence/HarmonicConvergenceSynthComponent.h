@@ -81,10 +81,12 @@ struct FAmbientDiffusionTank
 	}
 };
 
-// Particle Stream Voice Engine: Energy Capacitor Model (Tactile Pad Bite + Rising Charge Sweep)
+// Particle Stream Voice Engine: Energy Capacitor Model (Tactile Pad Bite + Harmonic Overtone Charge Sweep)
 struct FConvergenceVoiceDSP
 {
 	float NoteFrequencyHz = 261.63f;
+	EChordVoiceRole VoiceRole = EChordVoiceRole::FixedPitch;
+	int32 OctaveOffset = 2;
 	float CarrierPhaseAngle = 0.0f;
 	float HarmonicPhaseAngle = 0.0f;
 	float FlutterPhaseAngle = 0.0f;
@@ -102,7 +104,7 @@ struct FConvergenceVoiceDSP
 	float IgnitionEnvelope = 0.0f;
 	float IgnitionPhaseAngle = 0.0f;
 
-	float GenerateSample(float SampleRate, float ChordMultiplier, float& OutLeftSample, float& OutRightSample);
+	float GenerateSample(float SampleRate, float EffectiveFreqHz, float& OutLeftSample, float& OutRightSample);
 
 	void NoteOn()
 	{
@@ -129,6 +131,8 @@ struct FRhythmicPulseDSP
 	bool bIsActive = false;
 	int32 RhythmicPatternMask = 0x1111;
 	float BaseFrequencyHz = 130.81f;
+	EChordVoiceRole VoiceRole = EChordVoiceRole::FixedPitch;
+	int32 OctaveOffset = 2;
 	EVoiceTimbreProfile TimbreProfile = EVoiceTimbreProfile::SubBassPad;
 	float StereoPanPosition = 0.0f;
 	float SlotGain = 1.0f;
@@ -150,7 +154,7 @@ struct FRhythmicPulseDSP
 		}
 	}
 
-	float GenerateSample(float SampleRate, float ChordMultiplier, float ThirdRatio, float FifthRatio, float& OutLeftSample, float& OutRightSample);
+	float GenerateSample(float SampleRate, float EffectiveFreqHz, float& OutLeftSample, float& OutRightSample);
 };
 
 UCLASS(ClassGroup = (Custom), meta = (BlueprintSpawnableComponent))
@@ -174,7 +178,7 @@ public:
 	float FilterResonanceQ = 0.85f;
 
 	UFUNCTION(BlueprintCallable, Category = "Harmonics|Synth")
-	void NoteOn(int32 VoiceIndex, float NoteFrequencyHz, float StereoPan = 0.0f);
+	void NoteOn(int32 VoiceIndex, float NoteFrequencyHz, float StereoPan = 0.0f, EChordVoiceRole VoiceRole = EChordVoiceRole::FixedPitch, int32 OctaveOffset = 2);
 
 	UFUNCTION(BlueprintCallable, Category = "Harmonics|Synth")
 	void NoteOff(int32 VoiceIndex);
@@ -201,13 +205,9 @@ public:
 	void TriggerEchoRipple(float ChimeFrequencyHz, float StereoPan = 0.0f);
 
 	UFUNCTION(BlueprintCallable, Category = "Harmonics|Synth")
-	void SetRhythmicPulseSlot(int32 SlotIndex, bool bActive, int32 RhythmicMask = 0x1111, float NoteFrequencyHz = 130.81f, float StereoPan = 0.0f, EVoiceTimbreProfile TimbreProfile = EVoiceTimbreProfile::SubBassPad, float Gain = 1.0f);
+	void SetRhythmicPulseSlot(int32 SlotIndex, bool bActive, int32 RhythmicMask = 0x1111, float NoteFrequencyHz = 130.81f, float StereoPan = 0.0f, EVoiceTimbreProfile TimbreProfile = EVoiceTimbreProfile::SubBassPad, float Gain = 1.0f, EChordVoiceRole VoiceRole = EChordVoiceRole::FixedPitch, int32 OctaveOffset = 2);
 
-	UFUNCTION(BlueprintCallable, Category = "Harmonics|Synth")
-	void ClearAllRhythmicPulseSlots();
-
-	UFUNCTION(BlueprintPure, Category = "Harmonics|Synth")
-	float GetMasterBPM() const { return MasterTempoBPM; }
+	void SetRhythmicSlotGain(int32 SlotIndex, float Gain);
 
 	UFUNCTION(BlueprintCallable, Category = "Harmonics|Synth")
 	void SetMasterBPM(float NewBPM) { MasterTempoBPM = FMath::Clamp(NewBPM, 40.0f, 200.0f); }
@@ -215,26 +215,43 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Harmonics|Synth")
 	void SetRootFrequencyHz(float NewRootFreqHz) { RootFrequencyHz = FMath::Clamp(NewRootFreqHz, 32.0f, 261.63f); }
 
-	UFUNCTION(BlueprintPure, Category = "Harmonics|Synth")
 	int32 GetCurrentBeatStep() const { return CurrentBeatStep; }
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Harmonics|Audio")
 	bool bEnableChordProgression = true;
 
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Harmonics|Harmony")
+	bool bEnableAutoVoiceLeading = true;
+
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Harmonics|Audio", meta = (ClampMin = "1", ClampMax = "16"))
 	int32 BarsPerChord = 4;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Harmonics|Harmony")
-	TArray<FHarmonicChord> ChordProgression;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Harmonics|Harmony", meta = (TitleProperty = "FromDegree"))
+	TArray<FMarkovChordRow> MarkovTransitions;
+
+	UFUNCTION(BlueprintCallable, Category = "Harmonics|Synth")
+	void SetScaleMode(EHarmonicScaleMode NewScaleMode);
 
 	UFUNCTION(BlueprintPure, Category = "Harmonics|Synth")
-	int32 GetCurrentChordIndex() const { return CurrentChordIndex; }
+	int32 GetCurrentScaleDegree() const;
+
+	UFUNCTION(BlueprintPure, Category = "Harmonics|Synth")
+	int32 GetCurrentChordInversion() const;
+
+	UFUNCTION(BlueprintPure, Category = "Harmonics|Synth")
+	float GetChordVoiceFrequencyHz(EChordVoiceRole VoiceRole, int32 OctaveOffset, float FallbackFrequencyHz = 261.63f) const;
 
 protected:
 	virtual bool Init(int32& SampleRate) override;
 	virtual int32 OnGenerateAudio(float* OutAudio, int32 NumSamples) override;
 
 private:
+	friend class FHarmonicVoiceLeadingTest;
+	void InitializeVoicing_Unlocked();
+	void ApplyChordVoicing_Unlocked(const FHarmonicChord& NextChord, bool bSnapImmediate = false);
+	void AdvanceChordStep_Unlocked();
+	float ResolveVoiceFrequencyHz_Unlocked(EChordVoiceRole VoiceRole, int32 OctaveOffset, float FallbackFrequencyHz, bool bUseTargetRatio = false) const;
+
 	static constexpr int32 MaxVoices = 24;
 	FConvergenceVoiceDSP Voices[MaxVoices];
 
@@ -263,14 +280,13 @@ private:
 	float EchoRippleFrequencyHz = 880.0f;
 	float EchoRipplePanPosition = 0.0f;
 
+	EHarmonicScaleMode ActiveScaleMode = EHarmonicScaleMode::LydianCelestial;
 	int32 CurrentMeasureIndex = 0;
-	int32 CurrentChordIndex = 0;
-	float TargetChordMultiplier = 1.0f;
-	float CurrentChordMultiplier = 1.0f;
-	float TargetThirdRatio = 1.1892071f;
-	float CurrentThirdRatio = 1.1892071f;
-	float TargetFifthRatio = 1.4983071f;
-	float CurrentFifthRatio = 1.4983071f;
+	int32 CurrentScaleDegree = 0;
+	int32 CurrentVoicedSemitones[3] = { 0, 3, 7 };
+	int32 CurrentChordInversion = 0;
+	float TargetVoiceRatios[3] = { 1.0f, 1.1892071f, 1.4983071f };
+	float CurrentVoiceRatios[3] = { 1.0f, 1.1892071f, 1.4983071f };
 
 	FConvergenceResonantFilter LeftChannelFilter;
 	FConvergenceResonantFilter RightChannelFilter;
@@ -278,5 +294,5 @@ private:
 	FAmbientDiffusionTank DiffusionTank;
 	float CurrentSampleRate = 48000.0f;
 
-	FCriticalSection AudioLock;
+	mutable FCriticalSection AudioLock;
 };

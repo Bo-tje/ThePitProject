@@ -3,8 +3,6 @@
 #include "InputManagerSubSystem.h"
 #include "Kismet/GameplayStatics.h"
 #include "NiagaraComponent.h"
-#include "Quartz/AudioMixerClockHandle.h"
-#include "Quartz/QuartzSubsystem.h"
 
 AHarmonicConvergenceAudioManager::AHarmonicConvergenceAudioManager()
 {
@@ -32,33 +30,6 @@ AHarmonicStationActor* AHarmonicConvergenceAudioManager::FindStationByCrystal(co
 
 void AHarmonicConvergenceAudioManager::BeginPlay()
 {
-	if (UQuartzSubsystem* QuartzSubsystem = UQuartzSubsystem::Get(GetWorld()))
-	{
-		FQuartzClockSettings ClockSettings;
-		ClockSettings.bIgnoreLevelChange = false;
-
-		MasterQuartzClock = QuartzSubsystem->CreateNewClock(this, FName(TEXT("HarmonicMasterClock")), ClockSettings, true, true);
-		if (MasterQuartzClock)
-		{
-			FQuartzQuantizationBoundary ImmediateBoundary;
-			ImmediateBoundary.Quantization = EQuartzCommandQuantization::None;
-			FOnQuartzCommandEventBP DummyDelegate;
-			UQuartzClockHandle* ClockRef = MasterQuartzClock;
-			MasterQuartzClock->SetBeatsPerMinute(this, ImmediateBoundary, DummyDelegate, ClockRef, MasterBPM);
-			MasterQuartzClock->StartClock(this, ClockRef);
-		}
-	}
-
-	TInlineComponentArray<UNiagaraComponent*> AttachedNiagaraComps(this);
-	for (UNiagaraComponent* Comp : AttachedNiagaraComps)
-	{
-		if (Comp)
-		{
-			Comp->SetAutoActivate(false);
-			Comp->DeactivateImmediate();
-		}
-	}
-
 	DiscoverStations();
 	ApplyHarmonicScaleFrequencies();
 
@@ -66,10 +37,7 @@ void AHarmonicConvergenceAudioManager::BeginPlay()
 	{
 		if (Station)
 		{
-			if (!Station->bUseCustomTapCutDuration)
-			{
-				Station->TapCutMaxDurationSeconds = TapCutMaxDurationSeconds;
-			}
+			Station->TapCutMaxDurationSeconds = TapCutMaxDurationSeconds;
 			if (!Station->bUseCustomSpawnRate)
 			{
 				Station->SpawnRate = StationBeamSpawnRate;
@@ -79,19 +47,12 @@ void AHarmonicConvergenceAudioManager::BeginPlay()
 					Station->BeamComponent->SetVariableFloat(FName(TEXT("User.myVortexForce")), Station->SpawnRate * 1.5f);
 				}
 			}
-			Station->InitializeAudioStem(MasterQuartzClock);
 			Station->OnStationPressedChanged.AddDynamic(this, &AHarmonicConvergenceAudioManager::HandleStationPressedChanged);
 			if (Station->CrystalActor)
 			{
-				if (!Station->CrystalActor->bUseCustomChargeTime)
-				{
-					Station->CrystalActor->ChargeThresholdSeconds = CrystalChargeTimeSeconds;
-				}
-				if (!Station->CrystalActor->bUseCustomActiveLifespan)
-				{
-					Station->CrystalActor->ActiveLifespanSeconds = CrystalActiveLifespanSeconds;
-					Station->CrystalActor->RemainingLifespan = CrystalActiveLifespanSeconds;
-				}
+				Station->CrystalActor->ChargeThresholdSeconds = CrystalChargeTimeSeconds;
+				Station->CrystalActor->ActiveLifespanSeconds = CrystalActiveLifespanSeconds;
+				Station->CrystalActor->RemainingLifespan = CrystalActiveLifespanSeconds;
 				Station->CrystalActor->OnCrystalActivatedEvent.AddDynamic(this, &AHarmonicConvergenceAudioManager::HandleCrystalActivated);
 				Station->CrystalActor->OnCrystalExpiredEvent.AddDynamic(this, &AHarmonicConvergenceAudioManager::HandleCrystalExpired);
 			}
@@ -146,14 +107,6 @@ void AHarmonicConvergenceAudioManager::DiscoverStations()
 void AHarmonicConvergenceAudioManager::SetMasterBPM(float NewBPM)
 {
 	MasterBPM = FMath::Clamp(NewBPM, 40.0f, 240.0f);
-	if (MasterQuartzClock)
-	{
-		FQuartzQuantizationBoundary BarBoundary;
-		BarBoundary.Quantization = EQuartzCommandQuantization::Bar;
-		FOnQuartzCommandEventBP DummyDelegate;
-		UQuartzClockHandle* ClockRef = MasterQuartzClock;
-		MasterQuartzClock->SetBeatsPerMinute(this, BarBoundary, DummyDelegate, ClockRef, MasterBPM);
-	}
 	if (ProceduralSynthComponent)
 	{
 		ProceduralSynthComponent->SetMasterBPM(MasterBPM);
@@ -188,56 +141,20 @@ void AHarmonicConvergenceAudioManager::SetHarmonicScale(EHarmonicScaleMode NewSc
 
 void AHarmonicConvergenceAudioManager::ApplyHarmonicScaleFrequencies()
 {
-	if (ScaleMode == EHarmonicScaleMode::CustomFrequencies)
-	{
-		return;
-	}
-
-	// 7-note scale intervals in semitones relative to root (0..11)
-	static constexpr int32 ScaleLen = 7;
-	static constexpr int32 ScaleIntervals[4][ScaleLen] = {
-		{ 0, 2, 4, 6, 7, 9, 11 }, // LydianCelestial
-		{ 0, 2, 3, 5, 7, 9, 10 }, // DorianAmbient
-		{ 0, 2, 4, 5, 7, 9, 11 }, // IonianMajor
-		{ 0, 2, 3, 5, 7, 8, 10 }  // AeolianMinor
-	};
-
-	int32 TableIdx = 0;
-	switch (ScaleMode)
-	{
-	case EHarmonicScaleMode::DorianAmbient:   TableIdx = 1; break;
-	case EHarmonicScaleMode::IonianMajor:     TableIdx = 2; break;
-	case EHarmonicScaleMode::AeolianMinor:    TableIdx = 3; break;
-	case EHarmonicScaleMode::LydianCelestial:
-	default:                                  TableIdx = 0; break;
-	}
-
 	if (ProceduralSynthComponent)
 	{
 		ProceduralSynthComponent->SetRootFrequencyHz(RootNoteFrequencyHz);
+		ProceduralSynthComponent->SetScaleMode(ScaleMode);
 	}
+}
 
-	// Distribute 24 stations across open voicings spanning ~4 octaves (octaves 0..4 relative to RootNoteFrequencyHz)
-	static constexpr int32 StationOctaves[24] = {
-		0, 1, 2, 3,   // Unit 1: Low foundation to mid-high
-		1, 2, 3, 2,   // Unit 2: Bass & groove
-		3, 1, 2, 4,   // Unit 3: Chimes & pads
-		2, 2, 4, 1,   // Unit 4: Arps & harmonic pads
-		3, 4, 2, 3,   // Unit 5: Leads & sweeps
-		2, 3, 4, 1    // Unit 6: Shimmers & sub
-	};
-
-	for (AHarmonicStationActor* Station : Stations)
+EChordVoiceRole AHarmonicConvergenceAudioManager::GetEffectiveVoiceRole(const AHarmonicStationActor* Station) const
+{
+	if (!Station || ScaleMode == EHarmonicScaleMode::CustomFrequencies)
 	{
-		if (Station)
-		{
-			const int32 Idx = Station->StationIndex % 24;
-			// Spread scale degrees across stations so neighbors form open fifths/thirds rather than clashing seconds
-			const int32 Degree = (Idx * 2) % ScaleLen;
-			const int32 TotalSemis = StationOctaves[Idx] * 12 + ScaleIntervals[TableIdx][Degree];
-			Station->BaseFrequencyHz = RootNoteFrequencyHz * FHarmonicChord::SemitonesToRatio(static_cast<float>(TotalSemis));
-		}
+		return EChordVoiceRole::FixedPitch;
 	}
+	return Station->ChordVoiceRole;
 }
 
 void AHarmonicConvergenceAudioManager::HandleStationPressedChanged(AHarmonicStationActor* Station, bool bPressed)
@@ -249,21 +166,18 @@ void AHarmonicConvergenceAudioManager::HandleStationPressedChanged(AHarmonicStat
 
 	InactivityDurationSeconds = 0.0f;
 
+	if (!ProceduralSynthComponent)
+	{
+		return;
+	}
+
 	if (bPressed)
 	{
-		if (ProceduralSynthComponent)
-		{
-			ProceduralSynthComponent->NoteOn(Station->StationIndex, Station->BaseFrequencyHz, Station->PanPosition);
-		}
-		OnStationVoiceStarted.Broadcast(Station->ChannelName, Station->BaseFrequencyHz);
+		ProceduralSynthComponent->NoteOn(Station->StationIndex, Station->BaseFrequencyHz, Station->PanPosition, GetEffectiveVoiceRole(Station), Station->OctaveOffset);
 	}
 	else
 	{
-		if (ProceduralSynthComponent)
-		{
-			ProceduralSynthComponent->NoteOff(Station->StationIndex);
-		}
-		OnStationVoiceStopped.Broadcast(Station->ChannelName);
+		ProceduralSynthComponent->NoteOff(Station->StationIndex);
 	}
 }
 
@@ -281,18 +195,14 @@ void AHarmonicConvergenceAudioManager::HandleCrystalActivated(AHarmonicCrystalAc
 
 	for (AHarmonicStationActor* OtherStation : Stations)
 	{
-		if (OtherStation && OtherStation != Station && (OtherStation->StationIndex / 4) == UnitIdx)
+		if (OtherStation && OtherStation != Station && (OtherStation->StationIndex / 4) == UnitIdx && OtherStation->IsCrystalActive())
 		{
-			if (OtherStation->IsCrystalActive())
-			{
-				UnitActiveStations.Add(OtherStation);
-			}
+			UnitActiveStations.Add(OtherStation);
 		}
 	}
 
 	if (UnitActiveStations.Num() >= MaxActiveCrystalsPerStation)
 	{
-		// Find oldest active crystal in this unit (lowest remaining lifespan)
 		AHarmonicStationActor* OldestStation = nullptr;
 		float LowestRemainingLifespan = 999999.0f;
 
@@ -313,21 +223,18 @@ void AHarmonicConvergenceAudioManager::HandleCrystalActivated(AHarmonicCrystalAc
 
 	if (ProceduralSynthComponent)
 	{
-		if (!Station->AudioStemAsset)
-		{
-			ProceduralSynthComponent->SetRhythmicPulseSlot(
-				Station->StationIndex,
-				true,
-				Station->RhythmicPatternMask,
-				Station->BaseFrequencyHz,
-				Station->PanPosition,
-				Station->TimbreProfile,
-				1.0f);
-		}
+		ProceduralSynthComponent->SetRhythmicPulseSlot(
+			Station->StationIndex,
+			true,
+			Station->RhythmicPatternMask,
+			Station->BaseFrequencyHz,
+			Station->PanPosition,
+			Station->TimbreProfile,
+			1.0f,
+			GetEffectiveVoiceRole(Station),
+			Station->OctaveOffset);
 		ProceduralSynthComponent->TriggerVoiceIgnition(Station->StationIndex);
 	}
-
-	OnPersistentBeatActivated.Broadcast(Station->ChannelName, Station->RhythmicPatternMask, Station->BaseFrequencyHz);
 }
 
 void AHarmonicConvergenceAudioManager::HandleCrystalExpired(AHarmonicCrystalActor* Crystal)
@@ -340,7 +247,8 @@ void AHarmonicConvergenceAudioManager::HandleCrystalExpired(AHarmonicCrystalActo
 
 	if (ProceduralSynthComponent)
 	{
-		ProceduralSynthComponent->TriggerEchoRipple(Station->BaseFrequencyHz * 2.0f, Station->PanPosition);
+		const float LiveFreqHz = ProceduralSynthComponent->GetChordVoiceFrequencyHz(GetEffectiveVoiceRole(Station), Station->OctaveOffset, Station->BaseFrequencyHz);
+		ProceduralSynthComponent->TriggerEchoRipple(LiveFreqHz * 2.0f, Station->PanPosition);
 		ProceduralSynthComponent->SetRhythmicPulseSlot(Station->StationIndex, false);
 	}
 
@@ -359,9 +267,6 @@ void AHarmonicConvergenceAudioManager::HandleCrystalExpired(AHarmonicCrystalActo
 			Stations[RightNeighbor]->CrystalActor->TriggerBeatPulse(0.55f);
 		}
 	}
-
-	OnCrystalEchoRippleTriggered.Broadcast(Station->StationIndex, Station->GetCrystalWorldLocation());
-	OnPersistentBeatDeactivated.Broadcast(Station->StationIndex);
 
 	// Notify physical station hardware that crystal has expired (clears locked LED state)
 	if (UGameInstance* GI = GetGameInstance())
@@ -405,7 +310,6 @@ void AHarmonicConvergenceAudioManager::Tick(float DeltaTime)
 				if (Station && Station->IsCrystalActive() && (Station->RhythmicPatternMask & StepBit))
 				{
 					Station->CrystalActor->TriggerBeatPulse(1.0f);
-					OnStationBeatPulse.Broadcast(Station->StationIndex, 1.0f, Station->StreamColor);
 				}
 			}
 		}
@@ -437,7 +341,6 @@ void AHarmonicConvergenceAudioManager::UpdateGameAndSound(float DeltaTime)
 
 		if (Station->CrystalActor)
 		{
-			// Global room ceiling governs whether any more crystals can activate
 			Station->CrystalActor->bCanActivate = bGlobalCanActivate;
 		}
 
@@ -452,22 +355,13 @@ void AHarmonicConvergenceAudioManager::UpdateGameAndSound(float DeltaTime)
 			}
 		}
 
-		if (Station->IsCrystalActive() && ProceduralSynthComponent && !Station->AudioStemAsset && Station->CrystalActor->RemainingLifespan < 6.0f)
+		if (Station->IsCrystalActive() && ProceduralSynthComponent && Station->CrystalActor->RemainingLifespan < 6.0f)
 		{
 			const float AudioFadeAlpha = FMath::Clamp(Station->CrystalActor->RemainingLifespan / 6.0f, 0.0f, 1.0f);
-			ProceduralSynthComponent->SetRhythmicPulseSlot(
-				Station->StationIndex,
-				true,
-				Station->RhythmicPatternMask,
-				Station->BaseFrequencyHz,
-				Station->PanPosition,
-				Station->TimbreProfile,
-				AudioFadeAlpha);
+			ProceduralSynthComponent->SetRhythmicSlotGain(Station->StationIndex, AudioFadeAlpha);
 		}
 	}
 
-	// Granular Convergence Energy: starts at BaseActiveIntensity (1.0) on first active crystal/button
-	// and steps up by IntensityStepPerCrystal (0.25) per additional active source up to 2.0
 	const int32 CombinedActiveSources = FMath::Max(ActiveVoiceCount, CurrentlyActiveLoopers);
 	float TargetConvergenceEnergy = 0.0f;
 	if (CombinedActiveSources > 0)
@@ -478,12 +372,11 @@ void AHarmonicConvergenceAudioManager::UpdateGameAndSound(float DeltaTime)
 	}
 	ConvergenceEnergy = FMath::FInterpTo(ConvergenceEnergy, TargetConvergenceEnergy, DeltaTime, 5.0f);
 
-	const float CoreBrightness = FMath::Pow(ConvergenceEnergy, 1.5f);
 	for (AHarmonicStationActor* Station : Stations)
 	{
 		if (Station)
 		{
-			Station->UpdateBeamAndStem(DeltaTime, ConvergenceEnergy, ActiveVoiceCount, CoreBrightness);
+			Station->UpdateBeam();
 		}
 	}
 
@@ -501,7 +394,6 @@ void AHarmonicConvergenceAudioManager::UpdateGameAndSound(float DeltaTime)
 		{
 			ProceduralSynthComponent->TriggerOverdriveDrop();
 		}
-		OnHarmonicOverdriveStateChanged.Broadcast(bIsHarmonicOverdrive, OverdriveIntensity);
 	}
 
 	const float TargetOverdrive = bIsHarmonicOverdrive ? FMath::Clamp((CurrentlyActiveLoopers - OverdriveThreshold + 1) / 4.0f, 0.45f, 1.0f) : 0.0f;
@@ -513,22 +405,6 @@ void AHarmonicConvergenceAudioManager::UpdateGameAndSound(float DeltaTime)
 	}
 
 	UpdateAttractMode(DeltaTime, CurrentlyActiveLoopers);
-}
-
-void AHarmonicConvergenceAudioManager::ClearAllBeatSlots()
-{
-	if (ProceduralSynthComponent)
-	{
-		ProceduralSynthComponent->ClearAllRhythmicPulseSlots();
-	}
-
-	for (AHarmonicStationActor* Station : Stations)
-	{
-		if (Station)
-		{
-			Station->ResetStation();
-		}
-	}
 }
 
 void AHarmonicConvergenceAudioManager::UpdateAttractMode(float DeltaTime, int32 ActiveLoopers)
@@ -552,13 +428,13 @@ void AHarmonicConvergenceAudioManager::UpdateAttractMode(float DeltaTime, int32 
 				{
 					if (ProceduralSynthComponent)
 					{
-						ProceduralSynthComponent->TriggerAttractPing(Station->BaseFrequencyHz);
+						const float LiveFreqHz = ProceduralSynthComponent->GetChordVoiceFrequencyHz(GetEffectiveVoiceRole(Station), Station->OctaveOffset, Station->BaseFrequencyHz);
+						ProceduralSynthComponent->TriggerAttractPing(LiveFreqHz);
 					}
 					if (Station->CrystalActor)
 					{
 						Station->CrystalActor->TriggerBeatPulse(0.8f);
 					}
-					OnAttractPingTriggered.Broadcast(Station->ChannelName, Station->BaseFrequencyHz);
 				}
 			}
 		}
