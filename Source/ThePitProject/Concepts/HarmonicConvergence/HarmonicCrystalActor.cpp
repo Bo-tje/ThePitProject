@@ -6,6 +6,9 @@ AHarmonicCrystalActor::AHarmonicCrystalActor()
 	PrimaryActorTick.bCanEverTick = true;
 
 	CrystalRoot = CreateDefaultSubobject<USceneComponent>(TEXT("CrystalRoot"));
+#if WITH_EDITORONLY_DATA
+	CrystalRoot->bVisualizeComponent = true;
+#endif
 	SetRootComponent(CrystalRoot);
 }
 
@@ -52,18 +55,6 @@ void AHarmonicCrystalActor::DeactivateCrystal()
 	}
 }
 
-void AHarmonicCrystalActor::ResetCrystal()
-{
-	bIsCharging = false;
-	bIsActive = false;
-	bLifespanDecaying = false;
-	ChargeProgress = 0.0f;
-	PulseFlash = 0.0f;
-	RemainingLifespan = ActiveLifespanSeconds;
-	OnCrystalCharge(0.0f, CrystalColor);
-	OnCrystalDeactivated();
-}
-
 void AHarmonicCrystalActor::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
@@ -85,7 +76,7 @@ void AHarmonicCrystalActor::Tick(float DeltaTime)
 			{
 				RemainingLifespan = ActiveLifespanSeconds;
 			}
-			else if (bCanActivate)
+			else
 			{
 				bIsActive = true;
 				RemainingLifespan = ActiveLifespanSeconds;

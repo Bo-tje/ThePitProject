@@ -31,6 +31,48 @@ enum class EChordVoiceRole : uint8
 	FixedPitch = 3 UMETA(DisplayName = "Fixed Scale Pitch (No Chord Tracking)")
 };
 
+UENUM(BlueprintType)
+enum class EVoiceTimbreProfile : uint8
+{
+	WarmPad UMETA(DisplayName = "Warm Analog Pad (Dual-Detuned Sustained)"),
+	SubBassPad UMETA(DisplayName = "Deep Sub-Bass Anchor"),
+	CrystallineChime UMETA(DisplayName = "Crystalline Chime / Glass Marimba Pluck"),
+	VortexSweep UMETA(DisplayName = "Resonant Vortex Drone")
+};
+
+FORCEINLINE int32 SampleWeightedIndex(const float* Weights, int32 Count, float NormalizedRand01, int32 FallbackIndex)
+{
+	float TotalWeight = 0.0f;
+	int32 LastPositiveIndex = -1;
+	for (int32 Index = 0; Index < Count; ++Index)
+	{
+		const float PositiveWeight = FMath::Max(0.0f, Weights[Index]);
+		if (PositiveWeight > 0.0f)
+		{
+			TotalWeight += PositiveWeight;
+			LastPositiveIndex = Index;
+		}
+	}
+
+	if (TotalWeight <= KINDA_SMALL_NUMBER || LastPositiveIndex < 0)
+	{
+		return ((FallbackIndex % Count) + Count) % Count;
+	}
+
+	const float RouletteTarget = FMath::Clamp(NormalizedRand01, 0.0f, 0.999999f) * TotalWeight;
+	float AccumulatedWeight = 0.0f;
+	for (int32 Index = 0; Index < Count; ++Index)
+	{
+		const float PositiveWeight = FMath::Max(0.0f, Weights[Index]);
+		if (PositiveWeight > 0.0f && (AccumulatedWeight += PositiveWeight) > RouletteTarget)
+		{
+			return Index;
+		}
+	}
+
+	return LastPositiveIndex;
+}
+
 USTRUCT(BlueprintType)
 struct FHarmonicChord
 {
@@ -40,14 +82,12 @@ struct FHarmonicChord
 	static constexpr int32 MinVoiceSemitone = -5;
 	static constexpr int32 MaxVoiceSemitone = 16;
 
-	// Semitone offset relative to the scale root (e.g. 0 = I, -4 = bVI, 3 = bIII, -2 = bVII)
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Harmonics|Harmony", meta = (ClampMin = "-12", ClampMax = "12"))
 	int32 RootSemitoneOffset = 0;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Harmonics|Harmony")
 	EHarmonicChordQuality Quality = EHarmonicChordQuality::Minor;
 
-	// 0 = Root position, 1 = 1st inversion, 2 = 2nd inversion
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Harmonics|Harmony", meta = (ClampMin = "0", ClampMax = "2"))
 	int32 Inversion = 0;
 
@@ -56,62 +96,61 @@ struct FHarmonicChord
 		return FMath::Pow(2.0f, Semitones / 12.0f);
 	}
 
-	// Single source of truth for 7-note scale semitone intervals relative to root; returns false for CustomFrequencies
 	static FORCEINLINE bool GetScaleIntervals(EHarmonicScaleMode ScaleMode, int32 OutIntervals[7])
 	{
-		static constexpr int32 ScaleTable[4][7] = {
+		static constexpr int32 ScaleSemitoneTable[4][7] = {
 			{ 0, 2, 4, 6, 7, 9, 11 }, // LydianCelestial
 			{ 0, 2, 3, 5, 7, 9, 10 }, // DorianAmbient
 			{ 0, 2, 4, 5, 7, 9, 11 }, // IonianMajor
 			{ 0, 2, 3, 5, 7, 8, 10 }  // AeolianMinor
 		};
 
-		const bool bValid = (ScaleMode != EHarmonicScaleMode::CustomFrequencies);
-		const int32 Idx = bValid ? FMath::Clamp(static_cast<int32>(ScaleMode), 0, 3) : 0;
-		for (int32 i = 0; i < 7; ++i)
+		const bool bIsDiatonicScale = (ScaleMode != EHarmonicScaleMode::CustomFrequencies);
+		const int32 ModeIndex = bIsDiatonicScale ? FMath::Clamp(static_cast<int32>(ScaleMode), 0, 3) : 0;
+		for (int32 NoteIndex = 0; NoteIndex < 7; ++NoteIndex)
 		{
-			OutIntervals[i] = ScaleTable[Idx][i];
+			OutIntervals[NoteIndex] = ScaleSemitoneTable[ModeIndex][NoteIndex];
 		}
-		return bValid;
+		return bIsDiatonicScale;
 	}
 
-	// Build a diatonic triad from a 0-based scale degree (0 = I .. 6 = VII) within the given 7-note scale
 	static FORCEINLINE FHarmonicChord FromScaleDegree(EHarmonicScaleMode ScaleMode, int32 ScaleDegree, int32 InInversion = 0)
 	{
-		const int32 Deg = ((ScaleDegree % 7) + 7) % 7;
-		int32 Intervals[7];
-		GetScaleIntervals(ScaleMode, Intervals);
+		const int32 WrappedDegree = ((ScaleDegree % 7) + 7) % 7;
+		int32 ScaleIntervals[7];
+		GetScaleIntervals(ScaleMode, ScaleIntervals);
 
-		const int32 Root = Intervals[Deg];
-		const int32 ThirdSpan = Intervals[(Deg + 2) % 7] + (Deg + 2 >= 7 ? 12 : 0) - Root;
-		const int32 FifthSpan = Intervals[(Deg + 4) % 7] + (Deg + 4 >= 7 ? 12 : 0) - Root;
+		const int32 RootSemitone = ScaleIntervals[WrappedDegree];
+		const int32 ThirdIntervalSemitones = ScaleIntervals[(WrappedDegree + 2) % 7] + (WrappedDegree + 2 >= 7 ? 12 : 0) - RootSemitone;
+		const int32 FifthIntervalSemitones = ScaleIntervals[(WrappedDegree + 4) % 7] + (WrappedDegree + 4 >= 7 ? 12 : 0) - RootSemitone;
 
 		const EHarmonicChordQuality DiatonicQuality =
-			(ThirdSpan == 3 && FifthSpan == 6) ? EHarmonicChordQuality::Diminished :
-			(ThirdSpan == 3)                   ? EHarmonicChordQuality::Minor :
-			(FifthSpan == 8)                   ? EHarmonicChordQuality::Augmented :
-			                                     EHarmonicChordQuality::Major;
+			(ThirdIntervalSemitones == 3 && FifthIntervalSemitones == 6) ? EHarmonicChordQuality::Diminished :
+			(ThirdIntervalSemitones == 3)                                 ? EHarmonicChordQuality::Minor :
+			(FifthIntervalSemitones == 8)                                 ? EHarmonicChordQuality::Augmented :
+			                                                                EHarmonicChordQuality::Major;
 
-		return FHarmonicChord{ Root, DiatonicQuality, FMath::Clamp(InInversion, 0, 2) };
+		return FHarmonicChord{ RootSemitone, DiatonicQuality, FMath::Clamp(InInversion, 0, 2) };
 	}
 
-	FORCEINLINE void GetQualityIntervals(int32& OutThird, int32& OutFifth) const
+	FORCEINLINE void GetQualityIntervals(int32& OutThirdSemitones, int32& OutFifthSemitones) const
 	{
-		static constexpr int32 Intervals[4][2] = { { 4, 7 }, { 3, 7 }, { 3, 6 }, { 4, 8 } };
-		const int32 Q = FMath::Clamp(static_cast<int32>(Quality), 0, 3);
-		OutThird = Intervals[Q][0];
-		OutFifth = Intervals[Q][1];
+		static constexpr int32 QualitySemitoneTable[4][2] = { { 4, 7 }, { 3, 7 }, { 3, 6 }, { 4, 8 } };
+		const int32 QualityIndex = FMath::Clamp(static_cast<int32>(Quality), 0, 3);
+		OutThirdSemitones = QualitySemitoneTable[QualityIndex][0];
+		OutFifthSemitones = QualitySemitoneTable[QualityIndex][1];
 	}
 
-	FORCEINLINE void BuildCloseShape(int32 BaseRootSemis, int32 InInversion, int32 OutVoices[3]) const
+	FORCEINLINE void BuildCloseShape(int32 BaseRootSemitones, int32 InInversion, int32 OutVoices[3]) const
 	{
-		int32 Third = 4, Fifth = 7;
-		GetQualityIntervals(Third, Fifth);
-		const int32 Triad[3] = { 0, Third, Fifth };
-		const int32 Inv = FMath::Clamp(InInversion, 0, 2);
-		for (int32 i = 0; i < 3; ++i)
+		int32 ThirdSemitones = 4, FifthSemitones = 7;
+		GetQualityIntervals(ThirdSemitones, FifthSemitones);
+		const int32 TriadIntervals[3] = { 0, ThirdSemitones, FifthSemitones };
+		const int32 ClampedInversion = FMath::Clamp(InInversion, 0, 2);
+		for (int32 VoiceSlot = 0; VoiceSlot < 3; ++VoiceSlot)
 		{
-			OutVoices[i] = BaseRootSemis + Triad[(Inv + i) % 3] + (Inv + i >= 3 ? 12 : 0);
+			const int32 TriadNoteIndex = ClampedInversion + VoiceSlot;
+			OutVoices[VoiceSlot] = BaseRootSemitones + TriadIntervals[TriadNoteIndex % 3] + (TriadNoteIndex >= 3 ? 12 : 0);
 		}
 	}
 
@@ -121,80 +160,83 @@ struct FHarmonicChord
 
 		while (OutVoices[0] < MinVoiceSemitone)
 		{
-			for (int32 i = 0; i < 3; ++i) { OutVoices[i] += 12; }
+			for (int32 VoiceSlot = 0; VoiceSlot < 3; ++VoiceSlot) { OutVoices[VoiceSlot] += 12; }
 		}
 		while (OutVoices[2] > MaxVoiceSemitone)
 		{
-			for (int32 i = 0; i < 3; ++i) { OutVoices[i] -= 12; }
+			for (int32 VoiceSlot = 0; VoiceSlot < 3; ++VoiceSlot) { OutVoices[VoiceSlot] -= 12; }
 		}
 	}
 
-	FORCEINLINE void ChooseBestVoiceLeading(const int32 PrevVoices[3], int32 OutVoices[3], int32& OutChosenInversion) const
+	FORCEINLINE void ChooseBestVoiceLeading(const int32 PreviousVoices[3], int32 OutVoices[3], int32& OutChosenInversion) const
 	{
-		const int32 RootPC = ((RootSemitoneOffset % 12) + 12) % 12;
+		const int32 RootPitchClass = ((RootSemitoneOffset % 12) + 12) % 12;
 
-		int32 BestTotalDist = MAX_int32;
-		int32 BestMaxLeap = MAX_int32;
-		int32 BestCenterDist = MAX_int32;
-		int32 BestInv = 0;
-		int32 BestVoices[3] = { 0, 0, 0 };
+		int32 BestTotalDistance = MAX_int32;
+		int32 BestMaxVoiceLeap = MAX_int32;
+		int32 BestRegisterCenterDistance = MAX_int32;
+		int32 BestInversion = 0;
+		int32 BestVoicing[3] = { 0, 0, 0 };
 
-		for (int32 Inv = 0; Inv <= 2; ++Inv)
+		for (int32 CandidateInversion = 0; CandidateInversion <= 2; ++CandidateInversion)
 		{
-			int32 BaseShape[3];
-			BuildCloseShape(RootPC, Inv, BaseShape);
+			int32 UnshiftedTriad[3];
+			BuildCloseShape(RootPitchClass, CandidateInversion, UnshiftedTriad);
 
-			for (int32 Oct = -2; Oct <= 1; ++Oct)
+			for (int32 OctaveShift = -2; OctaveShift <= 1; ++OctaveShift)
 			{
-				const int32 Shift = Oct * 12;
-				const int32 Cand[3] = { BaseShape[0] + Shift, BaseShape[1] + Shift, BaseShape[2] + Shift };
-				if (Cand[0] < MinVoiceSemitone || Cand[2] > MaxVoiceSemitone)
+				const int32 SemitoneShift = OctaveShift * 12;
+				const int32 CandidateVoicing[3] = {
+					UnshiftedTriad[0] + SemitoneShift,
+					UnshiftedTriad[1] + SemitoneShift,
+					UnshiftedTriad[2] + SemitoneShift
+				};
+				if (CandidateVoicing[0] < MinVoiceSemitone || CandidateVoicing[2] > MaxVoiceSemitone)
 				{
 					continue;
 				}
 
-				const int32 D0 = FMath::Abs(Cand[0] - PrevVoices[0]);
-				const int32 D1 = FMath::Abs(Cand[1] - PrevVoices[1]);
-				const int32 D2 = FMath::Abs(Cand[2] - PrevVoices[2]);
-				const int32 TotalDist = D0 + D1 + D2;
-				const int32 MaxLeap = FMath::Max3(D0, D1, D2);
-				const int32 CenterDist = FMath::Abs((Cand[0] + Cand[1] + Cand[2]) - 12);
+				const int32 LowVoiceStep = FMath::Abs(CandidateVoicing[0] - PreviousVoices[0]);
+				const int32 MidVoiceStep = FMath::Abs(CandidateVoicing[1] - PreviousVoices[1]);
+				const int32 HighVoiceStep = FMath::Abs(CandidateVoicing[2] - PreviousVoices[2]);
+				const int32 TotalVoiceDistance = LowVoiceStep + MidVoiceStep + HighVoiceStep;
+				const int32 MaxVoiceLeap = FMath::Max3(LowVoiceStep, MidVoiceStep, HighVoiceStep);
+				const int32 RegisterCenterDistance = FMath::Abs((CandidateVoicing[0] + CandidateVoicing[1] + CandidateVoicing[2]) - 12);
 
-				const bool bBetter =
-					(TotalDist < BestTotalDist) ||
-					(TotalDist == BestTotalDist && MaxLeap < BestMaxLeap) ||
-					(TotalDist == BestTotalDist && MaxLeap == BestMaxLeap && CenterDist < BestCenterDist) ||
-					(TotalDist == BestTotalDist && MaxLeap == BestMaxLeap && CenterDist == BestCenterDist && Inv < BestInv);
+				const bool bIsSmootherTransition =
+					(TotalVoiceDistance < BestTotalDistance) ||
+					(TotalVoiceDistance == BestTotalDistance && MaxVoiceLeap < BestMaxVoiceLeap) ||
+					(TotalVoiceDistance == BestTotalDistance && MaxVoiceLeap == BestMaxVoiceLeap && RegisterCenterDistance < BestRegisterCenterDistance) ||
+					(TotalVoiceDistance == BestTotalDistance && MaxVoiceLeap == BestMaxVoiceLeap && RegisterCenterDistance == BestRegisterCenterDistance && CandidateInversion < BestInversion);
 
-				if (bBetter)
+				if (bIsSmootherTransition)
 				{
-					BestTotalDist = TotalDist;
-					BestMaxLeap = MaxLeap;
-					BestCenterDist = CenterDist;
-					BestInv = Inv;
-					BestVoices[0] = Cand[0];
-					BestVoices[1] = Cand[1];
-					BestVoices[2] = Cand[2];
+					BestTotalDistance = TotalVoiceDistance;
+					BestMaxVoiceLeap = MaxVoiceLeap;
+					BestRegisterCenterDistance = RegisterCenterDistance;
+					BestInversion = CandidateInversion;
+					BestVoicing[0] = CandidateVoicing[0];
+					BestVoicing[1] = CandidateVoicing[1];
+					BestVoicing[2] = CandidateVoicing[2];
 				}
 			}
 		}
 
-		if (BestTotalDist == MAX_int32)
+		if (BestTotalDistance == MAX_int32)
 		{
 			GetCloseVoicing(OutVoices, Inversion);
 			OutChosenInversion = FMath::Clamp(Inversion, 0, 2);
 			return;
 		}
 
-		for (int32 i = 0; i < 3; ++i)
+		for (int32 VoiceSlot = 0; VoiceSlot < 3; ++VoiceSlot)
 		{
-			OutVoices[i] = BestVoices[i];
+			OutVoices[VoiceSlot] = BestVoicing[VoiceSlot];
 		}
-		OutChosenInversion = BestInv;
+		OutChosenInversion = BestInversion;
 	}
 };
 
-// One row of the 7x7 Markov chord transition table (relative transition weights from FromDegree to I..VII)
 USTRUCT(BlueprintType)
 struct FMarkovChordRow
 {
@@ -206,55 +248,12 @@ struct FMarkovChordRow
 	UPROPERTY(EditAnywhere, Category = "Harmonics|Markov", meta = (ClampMin = "0.0"))
 	float Weights[7] = { 50.0f, 50.0f, 33.0f, 66.0f, 66.0f, 33.0f, 10.0f };
 
-	FORCEINLINE float GetWeight(int32 Degree) const
-	{
-		return (Degree >= 0 && Degree < 7) ? Weights[Degree] : 0.0f;
-	}
-
 	FORCEINLINE int32 SampleNextDegree(float NormalizedRand01, int32 FallbackDegree) const
 	{
-		float Total = 0.0f;
-		int32 LastPositiveIdx = -1;
-		for (int32 i = 0; i < 7; ++i)
-		{
-			const float W = FMath::Max(0.0f, Weights[i]);
-			if (W > 0.0f)
-			{
-				Total += W;
-				LastPositiveIdx = i;
-			}
-		}
-
-		if (Total <= KINDA_SMALL_NUMBER || LastPositiveIdx < 0)
-		{
-			return ((FallbackDegree % 7) + 7) % 7;
-		}
-
-		const float Target = FMath::Clamp(NormalizedRand01, 0.0f, 0.999999f) * Total;
-		float Acc = 0.0f;
-		for (int32 i = 0; i < 7; ++i)
-		{
-			const float W = FMath::Max(0.0f, Weights[i]);
-			if (W > 0.0f && (Acc += W) > Target)
-			{
-				return i;
-			}
-		}
-
-		return LastPositiveIdx;
+		return SampleWeightedIndex(Weights, 7, NormalizedRand01, FallbackDegree);
 	}
 };
 
-UENUM(BlueprintType)
-enum class EVoiceTimbreProfile : uint8
-{
-	WarmPad UMETA(DisplayName = "Warm Analog Pad (Dual-Detuned Sustained)"),
-	SubBassPad UMETA(DisplayName = "Deep Sub-Bass Anchor"),
-	CrystallineChime UMETA(DisplayName = "Crystalline Chime / Glass Marimba Pluck"),
-	VortexSweep UMETA(DisplayName = "Resonant Vortex Drone")
-};
-
-// One row of the 4x4 Markov Scale Mode transition table (relative weights to LydianCelestial, DorianAmbient, IonianMajor, AeolianMinor)
 USTRUCT(BlueprintType)
 struct FMarkovScaleRow
 {
@@ -268,34 +267,12 @@ struct FMarkovScaleRow
 
 	FORCEINLINE EHarmonicScaleMode SampleNextMode(const float DynamicBias[4], float NormalizedRand01, EHarmonicScaleMode FallbackMode) const
 	{
-		float Effective[4];
-		float Total = 0.0f;
-		int32 LastPositiveIdx = -1;
-		for (int32 i = 0; i < 4; ++i)
+		float BiasedWeights[4];
+		for (int32 ModeIndex = 0; ModeIndex < 4; ++ModeIndex)
 		{
-			Effective[i] = FMath::Max(0.0f, Weights[i] * FMath::Max(0.0f, DynamicBias[i]));
-			if (Effective[i] > 0.0f)
-			{
-				Total += Effective[i];
-				LastPositiveIdx = i;
-			}
+			BiasedWeights[ModeIndex] = FMath::Max(0.0f, Weights[ModeIndex] * FMath::Max(0.0f, DynamicBias[ModeIndex]));
 		}
-
-		if (Total <= KINDA_SMALL_NUMBER || LastPositiveIdx < 0)
-		{
-			return FallbackMode;
-		}
-
-		const float Target = FMath::Clamp(NormalizedRand01, 0.0f, 0.999999f) * Total;
-		float Acc = 0.0f;
-		for (int32 i = 0; i < 4; ++i)
-		{
-			if (Effective[i] > 0.0f && (Acc += Effective[i]) > Target)
-			{
-				return static_cast<EHarmonicScaleMode>(i);
-			}
-		}
-
-		return static_cast<EHarmonicScaleMode>(LastPositiveIdx);
+		const int32 ChosenModeIndex = SampleWeightedIndex(BiasedWeights, 4, NormalizedRand01, static_cast<int32>(FallbackMode));
+		return static_cast<EHarmonicScaleMode>(ChosenModeIndex);
 	}
 };

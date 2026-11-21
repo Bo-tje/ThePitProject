@@ -56,7 +56,6 @@ public:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Crystal|Runtime")
 	float PulseFlash = 0.0f;
 
-	bool bCanActivate = true;
 	bool bLifespanDecaying = false;
 
 	// --- C++ / Blueprint State Events ---
@@ -99,7 +98,4 @@ public:
 
 	UFUNCTION(BlueprintCallable, Category = "Crystal")
 	void DeactivateCrystal();
-
-	UFUNCTION(BlueprintCallable, Category = "Crystal")
-	void ResetCrystal();
 };

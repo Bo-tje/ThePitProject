@@ -11,6 +11,9 @@ AHarmonicStationActor::AHarmonicStationActor()
 	PrimaryActorTick.bCanEverTick = false;
 
 	StationRoot = CreateDefaultSubobject<USceneComponent>(TEXT("StationRoot"));
+#if WITH_EDITORONLY_DATA
+	StationRoot->bVisualizeComponent = true;
+#endif
 	SetRootComponent(StationRoot);
 
 	static ConstructorHelpers::FObjectFinderOptional<UNiagaraSystem> DefaultBeamSystem(TEXT("/Game/Niagara/NS_Empty.NS_Empty"));

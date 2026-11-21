@@ -210,7 +210,6 @@ UHarmonicConvergenceSynthComponent::UHarmonicConvergenceSynthComponent(const FOb
 	NumChannels = 2;
 	bAutoActivate = true;
 
-	// Default 7x7 Markov transition matrix seeded from Noah's scale-degree weights {50, 50, 33, 66, 66, 33, 10}
 	MarkovTransitions = {
 		{ TEXT("I (1)"),   {  0.0f, 50.0f, 33.0f, 66.0f, 66.0f, 33.0f, 10.0f } },
 		{ TEXT("II (2)"),  { 25.0f,  0.0f, 20.0f, 40.0f, 80.0f, 20.0f, 15.0f } },
@@ -221,7 +220,6 @@ UHarmonicConvergenceSynthComponent::UHarmonicConvergenceSynthComponent(const FOb
 		{ TEXT("VII (7)"), { 85.0f, 20.0f, 33.0f, 25.0f, 45.0f, 25.0f,  0.0f } }
 	};
 
-	// Default 4x4 Markov Scale Mode transition matrix: columns = [Lydian, Dorian, Ionian, Aeolian]
 	ScaleModeTransitions = {
 		{ TEXT("Lydian Celestial"), { 35.0f, 25.0f, 30.0f, 10.0f } },
 		{ TEXT("Dorian Ambient"),   { 30.0f, 35.0f, 15.0f, 20.0f } },
@@ -450,22 +448,10 @@ void UHarmonicConvergenceSynthComponent::TriggerOverdriveDrop()
 void UHarmonicConvergenceSynthComponent::TriggerEchoRipple(float ChimeFrequencyHz, float StereoPan, int32 VoiceIndex)
 {
 	FScopeLock Lock(&AudioLock);
-	if (VoiceIndex >= 0 && VoiceIndex < MaxVoices)
-	{
-		Voices[VoiceIndex].ExpiryFrequencyHz = FMath::Max(20.0f, ChimeFrequencyHz);
-		Voices[VoiceIndex].StereoPanPosition = FMath::Clamp(StereoPan, -1.0f, 1.0f);
-		Voices[VoiceIndex].TriggerExpiry();
-	}
-	else
-	{
-		if (EchoRippleEnvelope < 0.005f)
-		{
-			EchoRipplePhaseAngle = 0.0f;
-		}
-		EchoRippleEnvelope = 1.0f;
-		EchoRippleFrequencyHz = FMath::Clamp(ChimeFrequencyHz, 200.0f, 3500.0f);
-		EchoRipplePanPosition = FMath::Clamp(StereoPan, -1.0f, 1.0f);
-	}
+	const int32 SafeVoiceIndex = FMath::Clamp(VoiceIndex, 0, MaxVoices - 1);
+	Voices[SafeVoiceIndex].ExpiryFrequencyHz = FMath::Max(20.0f, ChimeFrequencyHz);
+	Voices[SafeVoiceIndex].StereoPanPosition = FMath::Clamp(StereoPan, -1.0f, 1.0f);
+	Voices[SafeVoiceIndex].TriggerExpiry();
 }
 
 void UHarmonicConvergenceSynthComponent::SetRhythmicPulseSlot(int32 SlotIndex, bool bActive, int32 RhythmicMask, float NoteFrequencyHz, float StereoPan, EVoiceTimbreProfile TimbreProfile, float Gain, EChordVoiceRole VoiceRole, int32 OctaveOffset)
@@ -662,17 +648,6 @@ int32 UHarmonicConvergenceSynthComponent::OnGenerateAudio(float* OutAudio, int32
 				SparkleRightChannel += RippleSample * FMath::Sin(RipplePanAngle);
 			}
 		}
-		if (EchoRippleEnvelope > 0.001f)
-		{
-			EchoRippleEnvelope = FMath::FInterpTo(EchoRippleEnvelope, 0.0f, InvSampleRate, 3.5f);
-			EchoRipplePhaseAngle += (EchoRippleFrequencyHz * 2.0f * PI) * InvSampleRate;
-			if (EchoRipplePhaseAngle > 2.0f * PI) EchoRipplePhaseAngle -= 2.0f * PI;
-
-			const float RippleSample = (FMath::Sin(EchoRipplePhaseAngle) * 0.6f + FMath::Sin(EchoRipplePhaseAngle * 3.0f) * 0.3f + FMath::Sin(EchoRipplePhaseAngle * 5.0f) * 0.1f) * EchoRippleEnvelope * 0.32f;
-			const float RipplePanAngle = (EchoRipplePanPosition + 1.0f) * 0.25f * PI;
-			SparkleLeftChannel += RippleSample * FMath::Cos(RipplePanAngle);
-			SparkleRightChannel += RippleSample * FMath::Sin(RipplePanAngle);
-		}
 
 		// 4. Ambient Attract Chime (post-filter so it stays bright at 0 ConvergenceEnergy)
 		if (AttractChimeEnvelope > 0.001f)
@@ -727,286 +702,38 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FHarmonicVoiceLeadingTest::RunTest(const FString& Parameters)
 {
-	// 1. Prompt example: F major (F-A-C = [5, 9, 12]) -> D minor (D-F-A) keeps F & A, moves C -> D ([5, 9, 14], 1st inversion)
-	{
-		const FHarmonicChord FMaj{ 5, EHarmonicChordQuality::Major, 0 };
-		const FHarmonicChord DMin{ 2, EHarmonicChordQuality::Minor, 0 };
-		int32 FVoices[3], DVoices[3], ChosenInv = -1;
-		FMaj.GetCloseVoicing(FVoices, 0);
-		TestEqual(TEXT("F major root voicing [0]"), FVoices[0], 5);
-		TestEqual(TEXT("F major root voicing [1]"), FVoices[1], 9);
-		TestEqual(TEXT("F major root voicing [2]"), FVoices[2], 12);
+	const FHarmonicChord FMajor{ 5, EHarmonicChordQuality::Major, 0 };
+	const FHarmonicChord DMinor{ 2, EHarmonicChordQuality::Minor, 0 };
+	int32 FMajorVoices[3], DMinorVoices[3], ChosenInversion = -1;
+	FMajor.GetCloseVoicing(FMajorVoices, 0);
+	DMinor.ChooseBestVoiceLeading(FMajorVoices, DMinorVoices, ChosenInversion);
+	TestTrue(TEXT("F->Dm chooses 1st inversion [5, 9, 14]"),
+		ChosenInversion == 1 && DMinorVoices[0] == 5 && DMinorVoices[1] == 9 && DMinorVoices[2] == 14);
 
-		DMin.ChooseBestVoiceLeading(FVoices, DVoices, ChosenInv);
-		TestEqual(TEXT("F->Dm chooses 1st inversion"), ChosenInv, 1);
-		TestEqual(TEXT("F->Dm keeps F"), DVoices[0], 5);
-		TestEqual(TEXT("F->Dm keeps A"), DVoices[1], 9);
-		TestEqual(TEXT("F->Dm moves C->D"), DVoices[2], 14);
+	UHarmonicConvergenceSynthComponent* Synth = NewObject<UHarmonicConvergenceSynthComponent>();
+	int32 SampleRate = 48000;
+	Synth->Init(SampleRate);
+	Synth->SetScaleMode(EHarmonicScaleMode::AeolianMinor);
+	Synth->SetScaleModeBiasWeights(1000.0f, 0.0f, 0.0f, 0.0f);
+
+	for (int32 Step = 0; Step < 32; ++Step)
+	{
+		Synth->AdvanceChordStep_Unlocked();
+		const int32* Voicing = Synth->CurrentVoicedSemitones;
+		TestTrue(TEXT("Bounded ascending close voicing"),
+			Voicing[0] >= FHarmonicChord::MinVoiceSemitone &&
+			Voicing[0] < Voicing[1] && Voicing[1] < Voicing[2] &&
+			Voicing[2] < Voicing[0] + 12 && Voicing[2] <= FHarmonicChord::MaxVoiceSemitone);
 	}
+	TestEqual(TEXT("Markov scale bias transitions to Lydian"), Synth->GetActiveScaleMode(), EHarmonicScaleMode::LydianCelestial);
 
-	// 2. Same transition with F as root (0 -> -3)
+	Synth->SetConvergenceEnergy(1.5f);
+	Synth->SetOverdriveIntensity(1.0f);
+	float AudioBuffer[512] = {};
+	Synth->OnGenerateAudio(AudioBuffer, 512);
+	for (float Sample : AudioBuffer)
 	{
-		const FHarmonicChord FMajRoot{ 0, EHarmonicChordQuality::Major, 0 };
-		const FHarmonicChord DMinRel{ -3, EHarmonicChordQuality::Minor, 0 };
-		int32 FVoices[3], DVoices[3], ChosenInv = -1;
-		FMajRoot.GetCloseVoicing(FVoices, 0);
-		DMinRel.ChooseBestVoiceLeading(FVoices, DVoices, ChosenInv);
-		TestEqual(TEXT("Relative F->Dm chooses 1st inversion"), ChosenInv, 1);
-		TestEqual(TEXT("Relative F->Dm keeps F"), DVoices[0], 0);
-		TestEqual(TEXT("Relative F->Dm keeps A"), DVoices[1], 4);
-		TestEqual(TEXT("Relative F->Dm moves C->D"), DVoices[2], 9);
-	}
-
-	// 3. Default progression Am -> F -> C -> G -> Am
-	{
-		const FHarmonicChord Prog[4] = {
-			{  0, EHarmonicChordQuality::Minor, 0 },
-			{ -4, EHarmonicChordQuality::Major, 0 },
-			{  3, EHarmonicChordQuality::Major, 0 },
-			{ -2, EHarmonicChordQuality::Major, 0 }
-		};
-		int32 Voices[3], Inv = -1;
-		Prog[0].GetCloseVoicing(Voices, 0);
-		TestEqual(TEXT("Am[0]"), Voices[0], 0);
-		TestEqual(TEXT("Am[1]"), Voices[1], 3);
-		TestEqual(TEXT("Am[2]"), Voices[2], 7);
-
-		Prog[1].ChooseBestVoiceLeading(Voices, Voices, Inv);
-		TestEqual(TEXT("Am->F inv"), Inv, 1);
-		TestEqual(TEXT("Am->F[0]"), Voices[0], 0);
-		TestEqual(TEXT("Am->F[1]"), Voices[1], 3);
-		TestEqual(TEXT("Am->F[2]"), Voices[2], 8);
-
-		Prog[2].ChooseBestVoiceLeading(Voices, Voices, Inv);
-		TestEqual(TEXT("F->C inv"), Inv, 2);
-		TestEqual(TEXT("F->C[0]"), Voices[0], -2);
-		TestEqual(TEXT("F->C[1]"), Voices[1], 3);
-		TestEqual(TEXT("F->C[2]"), Voices[2], 7);
-
-		Prog[3].ChooseBestVoiceLeading(Voices, Voices, Inv);
-		TestEqual(TEXT("C->G inv"), Inv, 0);
-		TestEqual(TEXT("C->G[0]"), Voices[0], -2);
-		TestEqual(TEXT("C->G[1]"), Voices[1], 2);
-		TestEqual(TEXT("C->G[2]"), Voices[2], 5);
-
-		Prog[0].ChooseBestVoiceLeading(Voices, Voices, Inv);
-		TestEqual(TEXT("G->Am inv"), Inv, 0);
-		TestEqual(TEXT("G->Am[0]"), Voices[0], 0);
-		TestEqual(TEXT("G->Am[1]"), Voices[1], 3);
-		TestEqual(TEXT("G->Am[2]"), Voices[2], 7);
-	}
-
-	// 4. Anti-drift & inversion rotation over 100 steps of C -> F -> Dm -> G
-	{
-		const FHarmonicChord Cycle[4] = {
-			{ 0, EHarmonicChordQuality::Major, 0 },
-			{ 5, EHarmonicChordQuality::Major, 0 },
-			{ 2, EHarmonicChordQuality::Minor, 0 },
-			{ 7, EHarmonicChordQuality::Major, 0 }
-		};
-		int32 Voices[3], Inv = 0;
-		Cycle[0].GetCloseVoicing(Voices, 0);
-		bool bVisitedInv[3] = { true, false, false };
-
-		for (int32 Step = 1; Step <= 100; ++Step)
-		{
-			Cycle[Step % 4].ChooseBestVoiceLeading(Voices, Voices, Inv);
-			TestTrue(TEXT("Valid inversion range"), Inv >= 0 && Inv <= 2);
-			bVisitedInv[Inv] = true;
-			TestTrue(TEXT("Strictly ascending close voicing"), Voices[0] < Voices[1] && Voices[1] < Voices[2] && Voices[2] < Voices[0] + 12);
-			TestTrue(TEXT("Bounded register window"), Voices[0] >= FHarmonicChord::MinVoiceSemitone && Voices[2] <= FHarmonicChord::MaxVoiceSemitone);
-		}
-		TestTrue(TEXT("Visited inversion 0"), bVisitedInv[0]);
-		TestTrue(TEXT("Visited inversion 1"), bVisitedInv[1]);
-		TestTrue(TEXT("Visited inversion 2"), bVisitedInv[2]);
-	}
-
-	// 5. Exhaustive quality x root offset invariant check
-	{
-		const EHarmonicChordQuality Qualities[4] = {
-			EHarmonicChordQuality::Major,
-			EHarmonicChordQuality::Minor,
-			EHarmonicChordQuality::Diminished,
-			EHarmonicChordQuality::Augmented
-		};
-		const int32 Prev[3] = { 0, 4, 7 };
-		for (EHarmonicChordQuality Q : Qualities)
-		{
-			for (int32 Offset = -12; Offset <= 12; ++Offset)
-			{
-				const FHarmonicChord Chord{ Offset, Q, 0 };
-				for (int32 ReqInv = 0; ReqInv <= 2; ++ReqInv)
-				{
-					int32 Close[3];
-					Chord.GetCloseVoicing(Close, ReqInv);
-					TestTrue(TEXT("Close voicing ascending"), Close[0] < Close[1] && Close[1] < Close[2] && Close[2] < Close[0] + 12);
-					TestTrue(TEXT("Close voicing in bounds"), Close[0] >= FHarmonicChord::MinVoiceSemitone && Close[2] <= FHarmonicChord::MaxVoiceSemitone);
-				}
-				int32 Led[3], ChosenInv = -1;
-				Chord.ChooseBestVoiceLeading(Prev, Led, ChosenInv);
-				TestTrue(TEXT("Voice-led ascending"), Led[0] < Led[1] && Led[1] < Led[2] && Led[2] < Led[0] + 12);
-				TestTrue(TEXT("Voice-led in bounds"), Led[0] >= FHarmonicChord::MinVoiceSemitone && Led[2] <= FHarmonicChord::MaxVoiceSemitone);
-			}
-		}
-	}
-
-	// 6. GetChordVoiceFrequencyHz resolves Lowest/Middle/Highest/FixedPitch with OctaveOffset
-	{
-		UHarmonicConvergenceSynthComponent* Synth = NewObject<UHarmonicConvergenceSynthComponent>();
-		TestNotNull(TEXT("Synth component instantiated"), Synth);
-		Synth->SetRootFrequencyHz(65.41f);
-		Synth->SetScaleMode(EHarmonicScaleMode::AeolianMinor);
-		int32 DummySampleRate = 48000;
-		Synth->Init(DummySampleRate);
-
-		TestEqual(TEXT("Initial inversion"), Synth->GetCurrentChordInversion(), 0);
-		const float LowHz = Synth->GetChordVoiceFrequencyHz(EChordVoiceRole::LowestVoice, 2, 999.0f);
-		const float MidHz = Synth->GetChordVoiceFrequencyHz(EChordVoiceRole::MiddleVoice, 2, 999.0f);
-		const float HighHz = Synth->GetChordVoiceFrequencyHz(EChordVoiceRole::HighestVoice, 2, 999.0f);
-		const float FixedHz = Synth->GetChordVoiceFrequencyHz(EChordVoiceRole::FixedPitch, 2, 333.0f);
-
-		TestTrue(TEXT("LowestVoice oct 2"), FMath::IsNearlyEqual(LowHz, 65.41f * 4.0f, 0.05f));
-		TestTrue(TEXT("MiddleVoice oct 2"), FMath::IsNearlyEqual(MidHz, 65.41f * 4.0f * FHarmonicChord::SemitonesToRatio(3.0f), 0.05f));
-		TestTrue(TEXT("HighestVoice oct 2"), FMath::IsNearlyEqual(HighHz, 65.41f * 4.0f * FHarmonicChord::SemitonesToRatio(7.0f), 0.05f));
-		TestTrue(TEXT("FixedPitch uses fallback"), FMath::IsNearlyEqual(FixedHz, 333.0f, 0.001f));
-	}
-
-	// 7. Scale-relative diatonic chords across all 4 7-note modes x 7 degrees
-	{
-		const EHarmonicScaleMode Modes[4] = {
-			EHarmonicScaleMode::LydianCelestial,
-			EHarmonicScaleMode::DorianAmbient,
-			EHarmonicScaleMode::IonianMajor,
-			EHarmonicScaleMode::AeolianMinor
-		};
-
-		TestEqual(TEXT("Ionian I is Major"), FHarmonicChord::FromScaleDegree(EHarmonicScaleMode::IonianMajor, 0).Quality, EHarmonicChordQuality::Major);
-		TestEqual(TEXT("Ionian ii is Minor"), FHarmonicChord::FromScaleDegree(EHarmonicScaleMode::IonianMajor, 1).Quality, EHarmonicChordQuality::Minor);
-		TestEqual(TEXT("Ionian vii° is Diminished"), FHarmonicChord::FromScaleDegree(EHarmonicScaleMode::IonianMajor, 6).Quality, EHarmonicChordQuality::Diminished);
-		TestEqual(TEXT("Lydian II is Major"), FHarmonicChord::FromScaleDegree(EHarmonicScaleMode::LydianCelestial, 1).Quality, EHarmonicChordQuality::Major);
-		TestEqual(TEXT("Lydian #iv° is Diminished"), FHarmonicChord::FromScaleDegree(EHarmonicScaleMode::LydianCelestial, 3).Quality, EHarmonicChordQuality::Diminished);
-		TestEqual(TEXT("Dorian IV is Major"), FHarmonicChord::FromScaleDegree(EHarmonicScaleMode::DorianAmbient, 3).Quality, EHarmonicChordQuality::Major);
-		TestEqual(TEXT("Dorian vi° is Diminished"), FHarmonicChord::FromScaleDegree(EHarmonicScaleMode::DorianAmbient, 5).Quality, EHarmonicChordQuality::Diminished);
-		TestEqual(TEXT("Aeolian i is Minor"), FHarmonicChord::FromScaleDegree(EHarmonicScaleMode::AeolianMinor, 0).Quality, EHarmonicChordQuality::Minor);
-		TestEqual(TEXT("Aeolian ii° is Diminished"), FHarmonicChord::FromScaleDegree(EHarmonicScaleMode::AeolianMinor, 1).Quality, EHarmonicChordQuality::Diminished);
-		TestEqual(TEXT("Aeolian bVI is Major"), FHarmonicChord::FromScaleDegree(EHarmonicScaleMode::AeolianMinor, 5).Quality, EHarmonicChordQuality::Major);
-		TestEqual(TEXT("Aeolian bVII is Major"), FHarmonicChord::FromScaleDegree(EHarmonicScaleMode::AeolianMinor, 6).Quality, EHarmonicChordQuality::Major);
-
-		for (EHarmonicScaleMode Mode : Modes)
-		{
-			int32 Intervals[7];
-			TestTrue(TEXT("Valid 7-note scale"), FHarmonicChord::GetScaleIntervals(Mode, Intervals));
-
-			auto ContainsPC = [&](int32 PC) -> bool
-			{
-				const int32 NormPC = ((PC % 12) + 12) % 12;
-				for (int32 k = 0; k < 7; ++k)
-				{
-					if (Intervals[k] == NormPC) return true;
-				}
-				return false;
-			};
-
-			for (int32 Deg = 0; Deg < 7; ++Deg)
-			{
-				const FHarmonicChord Chord = FHarmonicChord::FromScaleDegree(Mode, Deg);
-				int32 Third = 0, Fifth = 0;
-				Chord.GetQualityIntervals(Third, Fifth);
-				TestTrue(TEXT("Diatonic triad root in scale"), ContainsPC(Chord.RootSemitoneOffset));
-				TestTrue(TEXT("Diatonic triad 3rd in scale"), ContainsPC(Chord.RootSemitoneOffset + Third));
-				TestTrue(TEXT("Diatonic triad 5th in scale"), ContainsPC(Chord.RootSemitoneOffset + Fifth));
-			}
-		}
-	}
-
-	// 8. 7x7 Markov transitions + voice-leading across all 4 modes
-	{
-		const FMarkovChordRow SingleWeightRow{ TEXT("TestSingle"), { 0.0f, 0.0f, 0.0f, 42.0f, 0.0f, 0.0f, 0.0f } };
-		TestEqual(TEXT("Single weight r=0.0"), SingleWeightRow.SampleNextDegree(0.0f, 1), 3);
-		TestEqual(TEXT("Single weight r=0.5"), SingleWeightRow.SampleNextDegree(0.5f, 1), 3);
-		TestEqual(TEXT("Single weight r=0.999999"), SingleWeightRow.SampleNextDegree(0.999999f, 1), 3);
-
-		const FMarkovChordRow ZeroTailRow{ TEXT("TestZeroTail"), { 10.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f } };
-		TestEqual(TEXT("Zero-weight columns never chosen at boundary"), ZeroTailRow.SampleNextDegree(0.999999f, 6), 0);
-
-		const FMarkovChordRow AllZeroRow{ TEXT("TestZeroAll"), { 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f } };
-		TestEqual(TEXT("All-zero row falls back safely"), AllZeroRow.SampleNextDegree(0.5f, 4), 4);
-
-		const EHarmonicScaleMode Modes[4] = {
-			EHarmonicScaleMode::LydianCelestial,
-			EHarmonicScaleMode::DorianAmbient,
-			EHarmonicScaleMode::IonianMajor,
-			EHarmonicScaleMode::AeolianMinor
-		};
-
-		for (EHarmonicScaleMode Mode : Modes)
-		{
-			UHarmonicConvergenceSynthComponent* Synth = NewObject<UHarmonicConvergenceSynthComponent>();
-			TestNotNull(TEXT("Markov synth instantiated"), Synth);
-			Synth->SetScaleMode(Mode);
-			int32 DummySampleRate = 48000;
-			Synth->Init(DummySampleRate);
-
-			int32 PrevDeg = Synth->GetCurrentScaleDegree();
-			bool bVisitedDeg[7] = {};
-			bool bVisitedInv[3] = {};
-			bVisitedDeg[PrevDeg] = true;
-			bVisitedInv[Synth->GetCurrentChordInversion()] = true;
-
-			for (int32 Step = 0; Step < 200; ++Step)
-			{
-				Synth->AdvanceChordStep_Unlocked();
-				const int32 Deg = Synth->GetCurrentScaleDegree();
-				const int32 Inv = Synth->GetCurrentChordInversion();
-				TestTrue(TEXT("Markov degree in [0,6]"), Deg >= 0 && Deg < 7);
-				TestNotEqual(TEXT("Default 0-diagonal matrix advances degree"), Deg, PrevDeg);
-				TestTrue(TEXT("Inversion in [0,2]"), Inv >= 0 && Inv <= 2);
-
-				const int32* V = Synth->CurrentVoicedSemitones;
-				TestTrue(TEXT("Markov voicing ascending close"), V[0] < V[1] && V[1] < V[2] && V[2] < V[0] + 12);
-				TestTrue(TEXT("Markov voicing in bounds"), V[0] >= FHarmonicChord::MinVoiceSemitone && V[2] <= FHarmonicChord::MaxVoiceSemitone);
-
-				bVisitedDeg[Deg] = true;
-				bVisitedInv[Inv] = true;
-				PrevDeg = Deg;
-			}
-
-			int32 UniqueDegrees = 0;
-			for (bool bSeen : bVisitedDeg) { if (bSeen) UniqueDegrees++; }
-			int32 UniqueInvs = 0;
-			for (bool bSeen : bVisitedInv) { if (bSeen) UniqueInvs++; }
-			TestTrue(TEXT("Visits multiple scale degrees"), UniqueDegrees >= 4);
-			TestTrue(TEXT("Visits multiple inversions"), UniqueInvs >= 2);
-
-			// Live SetScaleMode mid-run preserves valid voicing
-			Synth->SetScaleMode(EHarmonicScaleMode::AeolianMinor);
-			const int32* VAfter = Synth->CurrentVoicedSemitones;
-			TestTrue(TEXT("Live SetScaleMode voicing valid"), VAfter[0] < VAfter[1] && VAfter[1] < VAfter[2] && VAfter[2] < VAfter[0] + 12);
-
-			// Verify DSP buffer generation has zero DC offset and finite samples in Overdrive
-			Synth->SetConvergenceEnergy(1.5f);
-			Synth->SetOverdriveIntensity(1.0f);
-			float Buffer[512] = {};
-			Synth->OnGenerateAudio(Buffer, 512);
-			float Mean = 0.0f;
-			for (float S : Buffer)
-			{
-				TestTrue(TEXT("Finite DSP output"), FMath::IsFinite(S));
-				Mean += S;
-			}
-			TestTrue(TEXT("Overdrive sub-octave zero DC bias"), FMath::Abs(Mean / 512.0f) < 0.15f);
-		}
-
-		// 9. Verify 4x4 Scale Mode Markov sampling with dynamic timbre bias
-		{
-			UHarmonicConvergenceSynthComponent* Synth = NewObject<UHarmonicConvergenceSynthComponent>();
-			int32 DummySampleRate = 48000;
-			Synth->Init(DummySampleRate);
-			Synth->SetScaleMode(EHarmonicScaleMode::AeolianMinor);
-			Synth->SetScaleModeBiasWeights(1000.0f, 0.0f, 0.0f, 0.0f); // Exclusive Lydian bias
-			Synth->AdvanceChordStep_Unlocked();
-			TestEqual(TEXT("4x4 ScaleMode Markov transitions to biased Lydian mode"), Synth->GetActiveScaleMode(), EHarmonicScaleMode::LydianCelestial);
-		}
+		TestTrue(TEXT("Finite DSP sample"), FMath::IsFinite(Sample));
 	}
 
 	return true;

@@ -219,7 +219,7 @@ public:
 	void TriggerOverdriveDrop();
 
 	UFUNCTION(BlueprintCallable, Category = "Harmonics|Synth")
-	void TriggerEchoRipple(float ChimeFrequencyHz, float StereoPan = 0.0f, int32 VoiceIndex = -1);
+	void TriggerEchoRipple(float ChimeFrequencyHz, float StereoPan = 0.0f, int32 VoiceIndex = 0);
 
 	UFUNCTION(BlueprintCallable, Category = "Harmonics|Synth")
 	void SetRhythmicPulseSlot(int32 SlotIndex, bool bActive, int32 RhythmicMask = 0x1111, float NoteFrequencyHz = 130.81f, float StereoPan = 0.0f, EVoiceTimbreProfile TimbreProfile = EVoiceTimbreProfile::SubBassPad, float Gain = 1.0f, EChordVoiceRole VoiceRole = EChordVoiceRole::FixedPitch, int32 OctaveOffset = 2);
@@ -302,11 +302,6 @@ private:
 	float OverdriveIntensity = 0.0f;
 	float OverdriveDropEnvelope = 0.0f;
 	float OverdriveDropPhaseAngle = 0.0f;
-
-	float EchoRippleEnvelope = 0.0f;
-	float EchoRipplePhaseAngle = 0.0f;
-	float EchoRippleFrequencyHz = 880.0f;
-	float EchoRipplePanPosition = 0.0f;
 
 	EHarmonicScaleMode ActiveScaleMode = EHarmonicScaleMode::LydianCelestial;
 	float ScaleModeDynamicBias[4] = { 1.0f, 1.0f, 1.0f, 1.0f };
