@@ -64,7 +64,7 @@ void AHarmonicStationActor::ApplyDefaultPresetForIndex()
 		// Unit 1 (0–3): South Station - Beats / Sub-Bass
 		{ TEXT("player1"),  EVoiceTimbreProfile::SubBassPad,       FLinearColor(0.0f, 0.9f, 1.0f),  0x1111, EChordVoiceRole::LowestVoice,  0 },
 		{ TEXT("player2"),  EVoiceTimbreProfile::SubBassPad,       FLinearColor(0.0f, 0.6f, 1.0f),  0x0449, EChordVoiceRole::LowestVoice,  1 },
-		{ TEXT("player3"),  EVoiceTimbreProfile::SubBassPad,       FLinearColor(0.1f, 0.4f, 1.0f),  0x0101, EChordVoiceRole::MiddleVoice,  2 },
+		{ TEXT("player3"),  EVoiceTimbreProfile::SubBassPad,       FLinearColor(0.1f, 0.4f, 1.0f),  0x1010, EChordVoiceRole::MiddleVoice,  2 },
 		{ TEXT("player4"),  EVoiceTimbreProfile::SubBassPad,       FLinearColor(0.0f, 0.8f, 0.9f),  0x4444, EChordVoiceRole::HighestVoice, 3 },
 
 		// Unit 2 (4–7): South-East Station - Bass & Percussive Groove

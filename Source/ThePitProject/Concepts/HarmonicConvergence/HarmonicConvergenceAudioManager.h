@@ -24,6 +24,10 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Harmonics|Setup")
 	EHarmonicScaleMode ScaleMode = EHarmonicScaleMode::LydianCelestial;
 
+	// Dynamically shifts ScaleMode along the brightness arc (Aeolian -> Dorian -> Lydian -> Ionian) based on active player/crystal count
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Harmonics|Setup")
+	bool bAutoScaleMode = true;
+
 	// Root note frequency in Hz (default 65.41 Hz = C2); all scale pitches are computed as semitone intervals from this root
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Harmonics|Setup", meta = (ClampMin = "32.0", ClampMax = "261.63"))
 	float RootNoteFrequencyHz = 65.41f;
@@ -45,6 +49,16 @@ public:
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Harmonics|Setup")
 	float MasterBPM = 120.0f;
+
+	// Dynamically glides MasterBPM between MinDynamicBPM and MaxDynamicBPM based on active Scale Mode, rhythmic timbre drive, and crowd energy
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Harmonics|Setup")
+	bool bEnableDynamicBPM = true;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Harmonics|Setup", meta = (ClampMin = "60.0", ClampMax = "140.0", EditCondition = "bEnableDynamicBPM"))
+	float MinDynamicBPM = 90.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Harmonics|Setup", meta = (ClampMin = "100.0", ClampMax = "180.0", EditCondition = "bEnableDynamicBPM"))
+	float MaxDynamicBPM = 136.0f;
 
 	UFUNCTION(BlueprintCallable, Category = "Harmonics|Setup")
 	void SetMasterBPM(float NewBPM);
@@ -95,6 +109,11 @@ public:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Harmonics|Overdrive")
 	bool bIsHarmonicOverdrive = false;
 
+	// --- Modal Visual Theme Sync ---
+	// How strongly the active Scale Mode atmosphere palette tints station Niagara beams & crystals (0 = original station colors, 1 = full thematic shift)
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Harmonics|Visuals", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	float VisualThemeBlendStrength = 0.55f;
+
 	// --- Control & Queries ---
 	UFUNCTION(BlueprintCallable, Category = "Harmonics|Control")
 	void SetHarmonicScale(EHarmonicScaleMode NewScaleMode);
@@ -121,6 +140,8 @@ private:
 	EChordVoiceRole GetEffectiveVoiceRole(const AHarmonicStationActor* Station) const;
 	void UpdateGameAndSound(float DeltaTime);
 	void UpdateAttractMode(float DeltaTime, int32 ActiveLoopers);
+	void UpdateModalHarmonyAndVisuals(float DeltaTime, const int32 TimbreCounts[4], int32 CombinedActiveSources);
+	FLinearColor GetModalAtmosphereColor(EHarmonicScaleMode Mode, int32 UnitIdx) const;
 
 	UFUNCTION()
 	void HandleStationPressedChanged(AHarmonicStationActor* Station, bool bPressed);
@@ -132,4 +153,7 @@ private:
 	void HandleCrystalExpired(AHarmonicCrystalActor* Crystal);
 
 	int32 LastBeatStep = -1;
+	float LastSyncedHardwareBPM = -1.0f;
+	float LastCrystalActivationTimestamp = -10.0f;
+	int32 LastActivatedStationIndex = INDEX_NONE;
 };

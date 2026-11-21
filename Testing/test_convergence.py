@@ -5,6 +5,12 @@ Sends OSC messages to Unreal Engine 5 on Port 8000.
 
 Usage:
   python3 test_convergence.py              # Interactive Keyboard Mode (Play live)
+  python3 test_convergence.py dorian       # Lock in Bass & Beat stations (steers 4x4 Scale Matrix toward Dorian)
+  python3 test_convergence.py aeolian      # Lock in Warm Pad stations (steers 4x4 Scale Matrix toward Aeolian)
+  python3 test_convergence.py lydian       # Lock in Chime & Sweep stations (steers 4x4 Scale Matrix toward Lydian)
+  python3 test_convergence.py ionian       # Lock in Full Mix across sections (steers 4x4 Scale Matrix toward Ionian)
+  python3 test_convergence.py shockwave    # Trigger Simultaneous Co-op Ignition Shockwave (<0.6s lock-in)
+  python3 test_convergence.py clear        # Tap-to-Cut all 24 crystals (reset active loops)
   python3 test_convergence.py chord        # Test 24-button massive orchestral cascade
   python3 test_convergence.py bass         # Test Sub-Bass Anchor stations
   python3 test_convergence.py chimes       # Test Crystalline High Chime stations
@@ -34,6 +40,32 @@ TOTAL_BUTTONS = 24
 
 STATION_BUTTON_PRESSED = 1.0
 STATION_BUTTON_RELEASED = 0.0
+CHARGE_LOCK_DURATION_SECONDS = 2.15
+TAP_CUT_DURATION_SECONDS = 0.12
+
+# Modal Exploration Presets (locks in specific timbre groups to steer the 4x4 Scale Mode Weight Matrix & lighting)
+MODAL_EXPLORATION_PRESETS = {
+    "dorian": {
+        "title": "Dorian Cyber-Groove Bias (Bass & Beats: Units 1 & 2)",
+        "stations": [1, 3, 5, 6],
+    },
+    "aeolian": {
+        "title": "Aeolian Nocturnal Bias (Warm Pads: Unit 4)",
+        "stations": [11, 13, 14, 15],
+    },
+    "lydian": {
+        "title": "Lydian Celestial Bias (Chimes & Vortex Sweeps: Units 3, 5 & 6)",
+        "stations": [9, 10, 18, 21],
+    },
+    "ionian": {
+        "title": "Ionian Euphoric Full-Mix Bias (Bass + Pads + Chimes Collaboration)",
+        "stations": [1, 5, 9, 13, 18, 21],
+    },
+    "shockwave": {
+        "title": "Simultaneous Co-op Ignition Shockwave (2 players lock in within <0.6s)",
+        "stations": [1, 13],
+    },
+}
 
 
 def build_osc_float_packet(channel_address: str, float_value: float) -> bytes:
@@ -55,6 +87,36 @@ def send_station_osc_event(station_channel_name: str, signal_value: float):
 
     event_state_label = "PRESSED" if signal_value > 0.5 else "RELEASED"
     print(f"  🎵 [{station_channel_name:<9}] = {signal_value:4.1f} ({event_state_label})")
+
+
+def tap_cut_all_crystals():
+    """Sends a quick 120ms tap to all 24 stations to deactivate any currently locked-in crystals."""
+    print("\n--- Tap-to-Cut: Clearing All Active Crystals ---")
+    for station_id in range(1, TOTAL_BUTTONS + 1):
+        send_station_osc_event(f"player{station_id}", STATION_BUTTON_PRESSED)
+    time.sleep(TAP_CUT_DURATION_SECONDS)
+    for station_id in range(1, TOTAL_BUTTONS + 1):
+        send_station_osc_event(f"player{station_id}", STATION_BUTTON_RELEASED)
+    time.sleep(0.15)
+    print("  🧹 All active crystals cut.\n")
+
+
+def trigger_modal_preset(preset_key: str, clear_existing: bool = True):
+    """Charges and locks in a timbre group to steer the 4x4 Scale Mode Weight Matrix & lighting."""
+    preset = MODAL_EXPLORATION_PRESETS[preset_key]
+    if clear_existing:
+        tap_cut_all_crystals()
+
+    print(f"\n--- Locking In: {preset['title']} ---")
+    print(f"  ⚡ Holding stations {preset['stations']} for {CHARGE_LOCK_DURATION_SECONDS:.2f}s to ignite crystals...")
+    for station_id in preset["stations"]:
+        send_station_osc_event(f"player{station_id}", STATION_BUTTON_PRESSED)
+
+    time.sleep(CHARGE_LOCK_DURATION_SECONDS)
+
+    for station_id in preset["stations"]:
+        send_station_osc_event(f"player{station_id}", STATION_BUTTON_RELEASED)
+    print("  🌟 Crystals locked in!\n")
 
 
 def test_24_button_cascade():
@@ -125,13 +187,19 @@ def test_random_crowd_simulation():
 
 
 def run_interactive_keyboard_controller():
-    """Provides a live keyboard interface to trigger and toggle individual stations or crowds."""
-    print("\n" + "=" * 65)
+    """Provides a live keyboard interface to trigger and toggle individual stations, crowds, or modal timbre groups."""
+    print("\n" + "=" * 75)
     print("  🎹 24-BUTTON INTERACTIVE HARMONIC CONVERGENCE KEYBOARD")
-    print("  Keys 1-9, 0: Toggle buttons 1-10")
-    print("  Keys a-n:    Toggle buttons 11-24")
-    print("  'r' = Random Crowd | 'x' = All Off | 'q' = Quit")
-    print("=" * 65)
+    print("  Keys 1-9, 0: Toggle buttons 1-10   | Keys a-n: Toggle buttons 11-24")
+    print("  --- 4x4 SCALE MATRIX & CO-OP TRIGGERS (Auto-charges 2.15s & locks in) ---")
+    print("  'D' (Shift+D) = Dorian Bias (Bass & Beats: Units 1 & 2)")
+    print("  'A' (Shift+A) = Aeolian Bias (Warm Pads: Unit 4)")
+    print("  'L' (Shift+L) = Lydian Bias (Chimes & Sweeps: Units 3, 5 & 6)")
+    print("  'I' (Shift+I) = Ionian Bias (Full Collaboration Mix across all timbres)")
+    print("  'S' (Shift+S) = Co-op Simultaneous Ignition Shockwave")
+    print("  'z' = Tap-to-Cut All Active Crystals | 'r' = Random Crowd")
+    print("  'x' = Release Held Buttons           | 'q' = Quit")
+    print("=" * 75)
 
     keyboard_to_station_map = {
         '1': 'player1',  '2': 'player2',  '3': 'player3',  '4': 'player4',  '5': 'player5',
@@ -139,6 +207,14 @@ def run_interactive_keyboard_controller():
         'a': 'player11', 'b': 'player12', 'c': 'player13', 'd': 'player14', 'e': 'player15',
         'f': 'player16', 'g': 'player17', 'h': 'player18', 'i': 'player19', 'j': 'player20',
         'k': 'player21', 'l': 'player22', 'm': 'player23', 'n': 'player24',
+    }
+
+    shortcut_to_preset_map = {
+        'D': 'dorian',
+        'A': 'aeolian',
+        'L': 'lydian',
+        'I': 'ionian',
+        'S': 'shockwave',
     }
 
     station_activation_states = {f"player{station_num}": False for station_num in range(1, TOTAL_BUTTONS + 1)}
@@ -174,6 +250,14 @@ def run_interactive_keyboard_controller():
                 station_activation_states[target_channel] = not station_activation_states[target_channel]
                 new_signal = STATION_BUTTON_PRESSED if station_activation_states[target_channel] else STATION_BUTTON_RELEASED
                 send_station_osc_event(target_channel, new_signal)
+            elif pressed_character in shortcut_to_preset_map:
+                for station_num in range(1, TOTAL_BUTTONS + 1):
+                    station_activation_states[f"player{station_num}"] = False
+                trigger_modal_preset(shortcut_to_preset_map[pressed_character], clear_existing=True)
+            elif pressed_character == 'z':
+                for station_num in range(1, TOTAL_BUTTONS + 1):
+                    station_activation_states[f"player{station_num}"] = False
+                tap_cut_all_crystals()
             elif pressed_character == 'x':
                 for station_num in range(1, TOTAL_BUTTONS + 1):
                     channel_name = f"player{station_num}"
@@ -195,7 +279,11 @@ def run_interactive_keyboard_controller():
 
 if __name__ == "__main__":
     selected_mode = sys.argv[1].lower() if len(sys.argv) > 1 else "interactive"
-    if selected_mode in ("chord", "cascade"):
+    if selected_mode in MODAL_EXPLORATION_PRESETS:
+        trigger_modal_preset(selected_mode, clear_existing=True)
+    elif selected_mode in ("clear", "cut"):
+        tap_cut_all_crystals()
+    elif selected_mode in ("chord", "cascade"):
         test_24_button_cascade()
     elif selected_mode in ("bass", "subbass"):
         test_sub_bass_anchors()

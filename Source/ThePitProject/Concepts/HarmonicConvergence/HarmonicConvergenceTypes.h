@@ -253,3 +253,49 @@ enum class EVoiceTimbreProfile : uint8
 	CrystallineChime UMETA(DisplayName = "Crystalline Chime / Glass Marimba Pluck"),
 	VortexSweep UMETA(DisplayName = "Resonant Vortex Drone")
 };
+
+// One row of the 4x4 Markov Scale Mode transition table (relative weights to LydianCelestial, DorianAmbient, IonianMajor, AeolianMinor)
+USTRUCT(BlueprintType)
+struct FMarkovScaleRow
+{
+	GENERATED_BODY()
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Harmonics|Markov")
+	FName FromMode = NAME_None;
+
+	UPROPERTY(EditAnywhere, Category = "Harmonics|Markov", meta = (ClampMin = "0.0"))
+	float Weights[4] = { 35.0f, 35.0f, 15.0f, 15.0f };
+
+	FORCEINLINE EHarmonicScaleMode SampleNextMode(const float DynamicBias[4], float NormalizedRand01, EHarmonicScaleMode FallbackMode) const
+	{
+		float Effective[4];
+		float Total = 0.0f;
+		int32 LastPositiveIdx = -1;
+		for (int32 i = 0; i < 4; ++i)
+		{
+			Effective[i] = FMath::Max(0.0f, Weights[i] * FMath::Max(0.0f, DynamicBias[i]));
+			if (Effective[i] > 0.0f)
+			{
+				Total += Effective[i];
+				LastPositiveIdx = i;
+			}
+		}
+
+		if (Total <= KINDA_SMALL_NUMBER || LastPositiveIdx < 0)
+		{
+			return FallbackMode;
+		}
+
+		const float Target = FMath::Clamp(NormalizedRand01, 0.0f, 0.999999f) * Total;
+		float Acc = 0.0f;
+		for (int32 i = 0; i < 4; ++i)
+		{
+			if (Effective[i] > 0.0f && (Acc += Effective[i]) > Target)
+			{
+				return static_cast<EHarmonicScaleMode>(i);
+			}
+		}
+
+		return static_cast<EHarmonicScaleMode>(LastPositiveIdx);
+	}
+};

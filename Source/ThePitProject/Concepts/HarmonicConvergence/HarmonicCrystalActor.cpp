@@ -36,6 +36,7 @@ void AHarmonicCrystalActor::DeactivateCrystal()
 {
 	if (bIsActive || bIsCharging || ChargeProgress > 0.0f)
 	{
+		const bool bWasActive = bIsActive;
 		bIsCharging = false;
 		bIsActive = false;
 		bLifespanDecaying = true;
@@ -44,7 +45,10 @@ void AHarmonicCrystalActor::DeactivateCrystal()
 		PulseFlash = 0.0f;
 		OnCrystalCharge(0.0f, CrystalColor);
 		OnCrystalDeactivated();
-		OnCrystalExpiredEvent.Broadcast(this);
+		if (bWasActive)
+		{
+			OnCrystalExpiredEvent.Broadcast(this);
+		}
 	}
 }
 

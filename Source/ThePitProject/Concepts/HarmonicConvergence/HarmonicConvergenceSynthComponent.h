@@ -104,6 +104,11 @@ struct FConvergenceVoiceDSP
 	float IgnitionEnvelope = 0.0f;
 	float IgnitionPhaseAngle = 0.0f;
 
+	// Crystal Expiry Echo Ripple Bell (Per-voice polyphonic bell fired on deactivation/expiry)
+	float ExpiryEnvelope = 0.0f;
+	float ExpiryPhaseAngle = 0.0f;
+	float ExpiryFrequencyHz = 880.0f;
+
 	float GenerateSample(float SampleRate, float EffectiveFreqHz, float& OutLeftSample, float& OutRightSample);
 
 	void NoteOn()
@@ -120,8 +125,20 @@ struct FConvergenceVoiceDSP
 
 	void TriggerIgnition()
 	{
+		if (IgnitionEnvelope < 0.005f)
+		{
+			IgnitionPhaseAngle = 0.0f;
+		}
 		IgnitionEnvelope = 1.0f;
-		IgnitionPhaseAngle = 0.0f;
+	}
+
+	void TriggerExpiry()
+	{
+		if (ExpiryEnvelope < 0.005f)
+		{
+			ExpiryPhaseAngle = 0.0f;
+		}
+		ExpiryEnvelope = 1.0f;
 	}
 };
 
@@ -145,13 +162,13 @@ struct FRhythmicPulseDSP
 
 	inline void Trigger()
 	{
-		Envelope = 1.0f;
-		PitchDecay = 1.0f;
-		if (TimbreProfile != EVoiceTimbreProfile::WarmPad)
+		if (Envelope < 0.005f && TimbreProfile != EVoiceTimbreProfile::WarmPad)
 		{
 			PhaseAngle = 0.0f;
 			PhaseAngle2 = 0.0f;
 		}
+		Envelope = 1.0f;
+		PitchDecay = 1.0f;
 	}
 
 	float GenerateSample(float SampleRate, float EffectiveFreqHz, float& OutLeftSample, float& OutRightSample);
@@ -202,7 +219,7 @@ public:
 	void TriggerOverdriveDrop();
 
 	UFUNCTION(BlueprintCallable, Category = "Harmonics|Synth")
-	void TriggerEchoRipple(float ChimeFrequencyHz, float StereoPan = 0.0f);
+	void TriggerEchoRipple(float ChimeFrequencyHz, float StereoPan = 0.0f, int32 VoiceIndex = -1);
 
 	UFUNCTION(BlueprintCallable, Category = "Harmonics|Synth")
 	void SetRhythmicPulseSlot(int32 SlotIndex, bool bActive, int32 RhythmicMask = 0x1111, float NoteFrequencyHz = 130.81f, float StereoPan = 0.0f, EVoiceTimbreProfile TimbreProfile = EVoiceTimbreProfile::SubBassPad, float Gain = 1.0f, EChordVoiceRole VoiceRole = EChordVoiceRole::FixedPitch, int32 OctaveOffset = 2);
@@ -229,8 +246,18 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Harmonics|Harmony", meta = (TitleProperty = "FromDegree"))
 	TArray<FMarkovChordRow> MarkovTransitions;
 
+	// 4x4 Markov transition table for modal exploration (Lydian, Dorian, Ionian, Aeolian) biased by active player timbres
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Harmonics|Harmony", meta = (TitleProperty = "FromMode"))
+	TArray<FMarkovScaleRow> ScaleModeTransitions;
+
 	UFUNCTION(BlueprintCallable, Category = "Harmonics|Synth")
 	void SetScaleMode(EHarmonicScaleMode NewScaleMode);
+
+	UFUNCTION(BlueprintPure, Category = "Harmonics|Synth")
+	EHarmonicScaleMode GetActiveScaleMode() const;
+
+	// Sets dynamic timbre-driven bias weights for the 4x4 ScaleModeTransitions matrix [Lydian, Dorian, Ionian, Aeolian]
+	void SetScaleModeBiasWeights(float LydianBias, float DorianBias, float IonianBias, float AeolianBias);
 
 	UFUNCTION(BlueprintPure, Category = "Harmonics|Synth")
 	int32 GetCurrentScaleDegree() const;
@@ -263,6 +290,7 @@ private:
 	int32 CurrentBeatStep = 0;
 
 	float RootFrequencyHz = 65.41f;
+	float CurrentChordRootRatio = 1.0f;
 	float RootSubBassDronePhaseAngle = 0.0f;
 	float TargetConvergenceEnergy = 0.0f;
 	float CurrentConvergenceEnergy = 0.0f;
@@ -281,6 +309,7 @@ private:
 	float EchoRipplePanPosition = 0.0f;
 
 	EHarmonicScaleMode ActiveScaleMode = EHarmonicScaleMode::LydianCelestial;
+	float ScaleModeDynamicBias[4] = { 1.0f, 1.0f, 1.0f, 1.0f };
 	int32 CurrentMeasureIndex = 0;
 	int32 CurrentScaleDegree = 0;
 	int32 CurrentVoicedSemitones[3] = { 0, 3, 7 };

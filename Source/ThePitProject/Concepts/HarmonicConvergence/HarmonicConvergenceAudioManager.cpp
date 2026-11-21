@@ -129,6 +129,7 @@ void AHarmonicConvergenceAudioManager::SyncHardwareConfig()
 	Config.IdleToAttractMs = FMath::Max(500, FMath::RoundToInt(AttractModeTimeoutSeconds * 1000.0f));
 	Config.MaxActivePerStation = FMath::Clamp(MaxActiveCrystalsPerStation, 1, 4);
 	Config.MasterBPM = MasterBPM;
+	LastSyncedHardwareBPM = MasterBPM;
 
 	InputSubsystem->SetSyncConfigAndSync(Config);
 }
@@ -189,24 +190,28 @@ void AHarmonicConvergenceAudioManager::HandleCrystalActivated(AHarmonicCrystalAc
 		return;
 	}
 
-	// Auto-Swap: If physical station unit exceeds MaxActiveCrystalsPerStation, deactivate the oldest active crystal
+	// Auto-Swap: If physical station unit exceeds MaxActiveCrystalsPerStation (or global active crystals exceed MaxActiveCrystals), deactivate the oldest active crystal
 	const int32 UnitIdx = Station->StationIndex / 4;
 	TArray<AHarmonicStationActor*> UnitActiveStations;
+	TArray<AHarmonicStationActor*> AllOtherActiveStations;
 
 	for (AHarmonicStationActor* OtherStation : Stations)
 	{
-		if (OtherStation && OtherStation != Station && (OtherStation->StationIndex / 4) == UnitIdx && OtherStation->IsCrystalActive())
+		if (OtherStation && OtherStation != Station && OtherStation->IsCrystalActive())
 		{
-			UnitActiveStations.Add(OtherStation);
+			AllOtherActiveStations.Add(OtherStation);
+			if ((OtherStation->StationIndex / 4) == UnitIdx)
+			{
+				UnitActiveStations.Add(OtherStation);
+			}
 		}
 	}
 
-	if (UnitActiveStations.Num() >= MaxActiveCrystalsPerStation)
+	auto DeactivateOldestIn = [](const TArray<AHarmonicStationActor*>& Candidates)
 	{
 		AHarmonicStationActor* OldestStation = nullptr;
-		float LowestRemainingLifespan = 999999.0f;
-
-		for (AHarmonicStationActor* S : UnitActiveStations)
+		float LowestRemainingLifespan = MAX_flt;
+		for (AHarmonicStationActor* S : Candidates)
 		{
 			if (S->CrystalActor && S->CrystalActor->RemainingLifespan < LowestRemainingLifespan)
 			{
@@ -214,11 +219,19 @@ void AHarmonicConvergenceAudioManager::HandleCrystalActivated(AHarmonicCrystalAc
 				OldestStation = S;
 			}
 		}
-
 		if (OldestStation && OldestStation->CrystalActor)
 		{
 			OldestStation->CrystalActor->DeactivateCrystal();
 		}
+	};
+
+	if (UnitActiveStations.Num() >= MaxActiveCrystalsPerStation)
+	{
+		DeactivateOldestIn(UnitActiveStations);
+	}
+	else if (AllOtherActiveStations.Num() >= MaxActiveCrystals)
+	{
+		DeactivateOldestIn(AllOtherActiveStations);
 	}
 
 	if (ProceduralSynthComponent)
@@ -235,6 +248,26 @@ void AHarmonicConvergenceAudioManager::HandleCrystalActivated(AHarmonicCrystalAc
 			Station->OctaveOffset);
 		ProceduralSynthComponent->TriggerVoiceIgnition(Station->StationIndex);
 	}
+
+	// Simultaneous Co-op Ignition Shockwave: if 2 distinct stations lock in within 0.6s of each other, pulse a light wave around the ring and chime an octave harmonic
+	const float CurrentTime = GetWorld() ? GetWorld()->GetTimeSeconds() : 0.0f;
+	if (LastActivatedStationIndex != INDEX_NONE && LastActivatedStationIndex != Station->StationIndex && (CurrentTime - LastCrystalActivationTimestamp) <= 0.60f)
+	{
+		if (ProceduralSynthComponent)
+		{
+			const float ComboFreqHz = ProceduralSynthComponent->GetChordVoiceFrequencyHz(GetEffectiveVoiceRole(Station), Station->OctaveOffset + 1, Station->BaseFrequencyHz * 2.0f);
+			ProceduralSynthComponent->TriggerEchoRipple(ComboFreqHz, Station->PanPosition, Station->StationIndex);
+		}
+		for (AHarmonicStationActor* RingStation : Stations)
+		{
+			if (RingStation && RingStation->CrystalActor)
+			{
+				RingStation->CrystalActor->TriggerBeatPulse(0.95f);
+			}
+		}
+	}
+	LastCrystalActivationTimestamp = CurrentTime;
+	LastActivatedStationIndex = Station->StationIndex;
 }
 
 void AHarmonicConvergenceAudioManager::HandleCrystalExpired(AHarmonicCrystalActor* Crystal)
@@ -248,7 +281,7 @@ void AHarmonicConvergenceAudioManager::HandleCrystalExpired(AHarmonicCrystalActo
 	if (ProceduralSynthComponent)
 	{
 		const float LiveFreqHz = ProceduralSynthComponent->GetChordVoiceFrequencyHz(GetEffectiveVoiceRole(Station), Station->OctaveOffset, Station->BaseFrequencyHz);
-		ProceduralSynthComponent->TriggerEchoRipple(LiveFreqHz * 2.0f, Station->PanPosition);
+		ProceduralSynthComponent->TriggerEchoRipple(LiveFreqHz * 2.0f, Station->PanPosition, Station->StationIndex);
 		ProceduralSynthComponent->SetRhythmicPulseSlot(Station->StationIndex, false);
 	}
 
@@ -321,16 +354,17 @@ void AHarmonicConvergenceAudioManager::UpdateGameAndSound(float DeltaTime)
 	ActiveVoiceCount = 0;
 	int32 CurrentlyActiveLoopers = 0;
 	float TotalModulationAccumulator = 0.0f;
+	int32 TimbreCounts[4] = { 0, 0, 0, 0 }; // [WarmPad, SubBassPad, CrystallineChime, VortexSweep]
 
 	for (AHarmonicStationActor* Station : Stations)
 	{
 		if (Station && Station->IsCrystalActive())
 		{
 			CurrentlyActiveLoopers++;
+			const int32 TimbreIdx = FMath::Clamp(static_cast<int32>(Station->TimbreProfile), 0, 3);
+			TimbreCounts[TimbreIdx]++;
 		}
 	}
-
-	const bool bGlobalCanActivate = (CurrentlyActiveLoopers < MaxActiveCrystals);
 
 	for (AHarmonicStationActor* Station : Stations)
 	{
@@ -341,7 +375,7 @@ void AHarmonicConvergenceAudioManager::UpdateGameAndSound(float DeltaTime)
 
 		if (Station->CrystalActor)
 		{
-			Station->CrystalActor->bCanActivate = bGlobalCanActivate;
+			Station->CrystalActor->bCanActivate = true;
 		}
 
 		if (Station->bIsPressed)
@@ -349,20 +383,35 @@ void AHarmonicConvergenceAudioManager::UpdateGameAndSound(float DeltaTime)
 			ActiveVoiceCount++;
 			const float Charge = Station->GetChargeProgress();
 			TotalModulationAccumulator += Charge;
+			if (!Station->IsCrystalActive())
+			{
+				const int32 TimbreIdx = FMath::Clamp(static_cast<int32>(Station->TimbreProfile), 0, 3);
+				TimbreCounts[TimbreIdx]++;
+			}
 			if (ProceduralSynthComponent)
 			{
 				ProceduralSynthComponent->SetVoiceModulation(Station->StationIndex, Charge);
 			}
 		}
 
-		if (Station->IsCrystalActive() && ProceduralSynthComponent && Station->CrystalActor->RemainingLifespan < 6.0f)
+		if (Station->IsCrystalActive() && ProceduralSynthComponent)
 		{
 			const float AudioFadeAlpha = FMath::Clamp(Station->CrystalActor->RemainingLifespan / 6.0f, 0.0f, 1.0f);
 			ProceduralSynthComponent->SetRhythmicSlotGain(Station->StationIndex, AudioFadeAlpha);
 		}
 	}
 
-	const int32 CombinedActiveSources = FMath::Max(ActiveVoiceCount, CurrentlyActiveLoopers);
+	int32 CombinedActiveSources = CurrentlyActiveLoopers;
+	for (AHarmonicStationActor* Station : Stations)
+	{
+		if (Station && Station->bIsPressed && !Station->IsCrystalActive())
+		{
+			CombinedActiveSources++;
+		}
+	}
+
+	UpdateModalHarmonyAndVisuals(DeltaTime, TimbreCounts, CombinedActiveSources);
+
 	float TargetConvergenceEnergy = 0.0f;
 	if (CombinedActiveSources > 0)
 	{
@@ -405,6 +454,112 @@ void AHarmonicConvergenceAudioManager::UpdateGameAndSound(float DeltaTime)
 	}
 
 	UpdateAttractMode(DeltaTime, CurrentlyActiveLoopers);
+}
+
+FLinearColor AHarmonicConvergenceAudioManager::GetModalAtmosphereColor(EHarmonicScaleMode Mode, int32 UnitIdx) const
+{
+	const bool bAltUnit = (UnitIdx % 2 == 1);
+	switch (Mode)
+	{
+	case EHarmonicScaleMode::AeolianMinor:
+		return bAltUnit ? FLinearColor(0.55f, 0.10f, 0.85f) : FLinearColor(0.15f, 0.20f, 0.95f); // Deep Indigo & Ultraviolet
+	case EHarmonicScaleMode::DorianAmbient:
+		return bAltUnit ? FLinearColor(0.95f, 0.15f, 0.65f) : FLinearColor(0.0f, 0.95f, 0.90f);  // Cyber Teal & Electric Magenta
+	case EHarmonicScaleMode::IonianMajor:
+		return bAltUnit ? FLinearColor(1.0f, 0.55f, 0.15f) : FLinearColor(1.0f, 0.92f, 0.35f);   // Warm Solar Gold & Sunset Amber
+	case EHarmonicScaleMode::LydianCelestial:
+	default:
+		return bAltUnit ? FLinearColor(0.20f, 0.90f, 1.0f) : FLinearColor(0.15f, 1.0f, 0.60f);   // Aurora Emerald & Starlight Cyan
+	}
+}
+
+void AHarmonicConvergenceAudioManager::UpdateModalHarmonyAndVisuals(float DeltaTime, const int32 TimbreCounts[4], int32 CombinedActiveSources)
+{
+	const EHarmonicScaleMode PreviousScaleMode = ScaleMode;
+
+	// 1. Feed timbre-driven bias weights into the 4x4 ScaleModeTransitions Markov table:
+	//    TimbreCounts = [0: WarmPad, 1: SubBassPad, 2: CrystallineChime, 3: VortexSweep]
+	if (ProceduralSynthComponent)
+	{
+		const float LydianBias  = 1.0f + (TimbreCounts[2] + TimbreCounts[3]) * 1.35f; // Chimes & Vortex Sweeps pull toward celestial Lydian
+		const float DorianBias  = 1.0f + TimbreCounts[1] * 1.40f;                     // Bass & Beats pull toward cyber-Dorian groove
+		const float AeolianBias = 1.0f + TimbreCounts[0] * 1.35f;                     // Warm Pads pull toward emotional Aeolian minor
+		const float IonianBias  = (TimbreCounts[0] > 0 && TimbreCounts[1] > 0 && (TimbreCounts[2] + TimbreCounts[3]) > 0)
+			? (2.0f + (TimbreCounts[0] + TimbreCounts[1] + TimbreCounts[2] + TimbreCounts[3]) * 0.6f)
+			: 0.5f; // Multi-section collaboration across Bass + Pads + Chimes pulls toward euphoric Ionian
+		ProceduralSynthComponent->SetScaleModeBiasWeights(LydianBias, DorianBias, IonianBias, AeolianBias);
+
+		if (bAutoScaleMode && ScaleMode != EHarmonicScaleMode::CustomFrequencies)
+		{
+			ScaleMode = ProceduralSynthComponent->GetActiveScaleMode();
+		}
+	}
+
+	// 2. Dynamic BPM: smoothly glides between MinDynamicBPM and MaxDynamicBPM based on modal character, rhythmic timbre drive, and overdrive
+	if (bEnableDynamicBPM)
+	{
+		const float SafeMinBPM = FMath::Min(MinDynamicBPM, MaxDynamicBPM);
+		const float SafeMaxBPM = FMath::Max(MinDynamicBPM, MaxDynamicBPM);
+		const float SpanBPM = SafeMaxBPM - SafeMinBPM;
+
+		// Modal base gravity: Aeolian (10% of span) < Lydian (38%) < Dorian (65%) < Ionian (80%)
+		const float ModalFraction =
+			(ScaleMode == EHarmonicScaleMode::AeolianMinor)    ? 0.10f :
+			(ScaleMode == EHarmonicScaleMode::LydianCelestial) ? 0.38f :
+			(ScaleMode == EHarmonicScaleMode::DorianAmbient)   ? 0.65f : 0.80f;
+
+		const float IdleBaseBPM = SafeMinBPM + SpanBPM * 0.15f;
+		const float ActiveModalBPM = SafeMinBPM + SpanBPM * ModalFraction;
+
+		// Bass/Beat & Chime stations push tempo forward (+2.2 BPM each); Warm Pads relax/anchor tempo (-1.0 BPM each); Overdrive adds +6 BPM rush
+		const float TimbreTempoDelta = (TimbreCounts[1] + TimbreCounts[2]) * 2.2f + TimbreCounts[3] * 1.0f - TimbreCounts[0] * 1.0f;
+		const float OverdriveRushBPM = bIsHarmonicOverdrive ? 6.0f : 0.0f;
+		const float TargetBPM = (CombinedActiveSources > 0)
+			? FMath::Clamp(ActiveModalBPM + TimbreTempoDelta + OverdriveRushBPM, SafeMinBPM, SafeMaxBPM)
+			: IdleBaseBPM;
+
+		MasterBPM = FMath::FInterpTo(MasterBPM, TargetBPM, DeltaTime, 0.85f);
+		if (ProceduralSynthComponent)
+		{
+			ProceduralSynthComponent->SetMasterBPM(MasterBPM);
+		}
+		if (FMath::Abs(MasterBPM - LastSyncedHardwareBPM) >= 2.0f)
+		{
+			SyncHardwareConfig();
+		}
+	}
+
+	// 2. Synchronize Niagara Beam Colors, Vortex Forces & Crystal Blueprint Colors whenever ScaleMode shifts
+	if (ScaleMode != PreviousScaleMode)
+	{
+		const float VortexMult = (ScaleMode == EHarmonicScaleMode::IonianMajor)     ? 2.2f :
+		                         (ScaleMode == EHarmonicScaleMode::LydianCelestial) ? 1.85f :
+		                         (ScaleMode == EHarmonicScaleMode::DorianAmbient)   ? 1.45f : 1.15f;
+
+		for (AHarmonicStationActor* Station : Stations)
+		{
+			if (!Station)
+			{
+				continue;
+			}
+
+			const int32 UnitIdx = FMath::Clamp(Station->StationIndex / 4, 0, 5);
+			const FLinearColor ThemeColor = GetModalAtmosphereColor(ScaleMode, UnitIdx);
+			const FLinearColor EffectiveColor = FLinearColor::LerpUsingHSV(Station->StreamColor, ThemeColor, VisualThemeBlendStrength);
+
+			if (Station->CrystalActor)
+			{
+				Station->CrystalActor->CrystalColor = EffectiveColor;
+			}
+			if (Station->BeamComponent)
+			{
+				const FVector DynamicColorVec = FVector(EffectiveColor.R, EffectiveColor.G, EffectiveColor.B) * 30.0f;
+				Station->BeamComponent->SetVariableVec3(FName(TEXT("User.BeamColor")), DynamicColorVec);
+				Station->BeamComponent->SetVariableVec3(FName(TEXT("User.myColor")), DynamicColorVec);
+				Station->BeamComponent->SetVariableFloat(FName(TEXT("User.myVortexForce")), Station->SpawnRate * VortexMult);
+			}
+		}
+	}
 }
 
 void AHarmonicConvergenceAudioManager::UpdateAttractMode(float DeltaTime, int32 ActiveLoopers)

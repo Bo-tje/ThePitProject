@@ -40,10 +40,10 @@ float FConvergenceVoiceDSP::GenerateSample(float SampleRate, float EffectiveFreq
 	if (TransientEnvelope > 0.001f)
 	{
 		TransientEnvelope = FMath::FInterpTo(TransientEnvelope, 0.0f, InvSampleRate, 22.0f);
-		TransientPhaseAngle += (EffectiveFreqHz * 3.0f * 2.0f * PI) * InvSampleRate;
+		TransientPhaseAngle += (EffectiveFreqHz * 2.0f * 2.0f * PI) * InvSampleRate;
 		if (TransientPhaseAngle > 2.0f * PI) TransientPhaseAngle -= 2.0f * PI;
 
-		const float TactileBite = (FMath::Sin(TransientPhaseAngle) * 0.65f + FMath::Sin(TransientPhaseAngle * 1.5f) * 0.35f) * TransientEnvelope * 0.50f;
+		const float TactileBite = (FMath::Sin(TransientPhaseAngle) * 0.65f + FMath::Sin(TransientPhaseAngle * 2.0f) * 0.35f) * TransientEnvelope * 0.50f;
 		MonoVoiceSample += TactileBite;
 	}
 
@@ -51,10 +51,10 @@ float FConvergenceVoiceDSP::GenerateSample(float SampleRate, float EffectiveFreq
 	if (IgnitionEnvelope > 0.001f)
 	{
 		IgnitionEnvelope = FMath::FInterpTo(IgnitionEnvelope, 0.0f, InvSampleRate, 6.0f);
-		IgnitionPhaseAngle += (EffectiveFreqHz * 2.5f * 2.0f * PI) * InvSampleRate;
+		IgnitionPhaseAngle += (EffectiveFreqHz * 2.0f * 2.0f * PI) * InvSampleRate;
 		if (IgnitionPhaseAngle > 2.0f * PI) IgnitionPhaseAngle -= 2.0f * PI;
 
-		const float IgnitionChime = (FMath::Sin(IgnitionPhaseAngle) * 0.7f + FMath::Sin(IgnitionPhaseAngle * 2.76f) * 0.3f) * IgnitionEnvelope * 0.55f;
+		const float IgnitionChime = (FMath::Sin(IgnitionPhaseAngle) * 0.7f + FMath::Sin(IgnitionPhaseAngle * 3.0f) * 0.3f) * IgnitionEnvelope * 0.55f;
 		MonoVoiceSample += IgnitionChime;
 	}
 
@@ -220,6 +220,14 @@ UHarmonicConvergenceSynthComponent::UHarmonicConvergenceSynthComponent(const FOb
 		{ TEXT("VI (6)"),  { 30.0f, 60.0f, 33.0f, 70.0f, 55.0f,  0.0f, 10.0f } },
 		{ TEXT("VII (7)"), { 85.0f, 20.0f, 33.0f, 25.0f, 45.0f, 25.0f,  0.0f } }
 	};
+
+	// Default 4x4 Markov Scale Mode transition matrix: columns = [Lydian, Dorian, Ionian, Aeolian]
+	ScaleModeTransitions = {
+		{ TEXT("Lydian Celestial"), { 35.0f, 25.0f, 30.0f, 10.0f } },
+		{ TEXT("Dorian Ambient"),   { 30.0f, 35.0f, 15.0f, 20.0f } },
+		{ TEXT("Ionian Major"),     { 35.0f, 20.0f, 35.0f, 10.0f } },
+		{ TEXT("Aeolian Minor"),    { 20.0f, 40.0f, 10.0f, 30.0f } }
+	};
 	InitializeVoicing_Unlocked();
 }
 
@@ -250,6 +258,7 @@ void UHarmonicConvergenceSynthComponent::InitializeVoicing_Unlocked()
 	}
 	else
 	{
+		CurrentChordRootRatio = 1.0f;
 		CurrentVoicedSemitones[0] = 0;
 		CurrentVoicedSemitones[1] = 3;
 		CurrentVoicedSemitones[2] = 7;
@@ -279,6 +288,7 @@ void UHarmonicConvergenceSynthComponent::ApplyChordVoicing_Unlocked(const FHarmo
 	}
 
 	CurrentChordInversion = NextInversion;
+	CurrentChordRootRatio = FHarmonicChord::SemitonesToRatio(static_cast<float>(NextChord.RootSemitoneOffset));
 	for (int32 i = 0; i < 3; ++i)
 	{
 		CurrentVoicedSemitones[i] = NextVoices[i];
@@ -295,6 +305,12 @@ void UHarmonicConvergenceSynthComponent::AdvanceChordStep_Unlocked()
 {
 	if (ActiveScaleMode != EHarmonicScaleMode::CustomFrequencies)
 	{
+		const int32 ModeIdx = FMath::Clamp(static_cast<int32>(ActiveScaleMode), 0, 3);
+		if (ScaleModeTransitions.IsValidIndex(ModeIdx))
+		{
+			ActiveScaleMode = ScaleModeTransitions[ModeIdx].SampleNextMode(ScaleModeDynamicBias, FMath::FRand(), ActiveScaleMode);
+		}
+
 		const int32 FallbackDegree = (CurrentScaleDegree + 1) % 7;
 		CurrentScaleDegree = MarkovTransitions.IsValidIndex(CurrentScaleDegree)
 			? MarkovTransitions[CurrentScaleDegree].SampleNextDegree(FMath::FRand(), FallbackDegree)
@@ -318,6 +334,21 @@ void UHarmonicConvergenceSynthComponent::SetScaleMode(EHarmonicScaleMode NewScal
 	{
 		ApplyChordVoicing_Unlocked(FHarmonicChord::FromScaleDegree(ActiveScaleMode, CurrentScaleDegree, 0), false);
 	}
+}
+
+EHarmonicScaleMode UHarmonicConvergenceSynthComponent::GetActiveScaleMode() const
+{
+	FScopeLock Lock(&AudioLock);
+	return ActiveScaleMode;
+}
+
+void UHarmonicConvergenceSynthComponent::SetScaleModeBiasWeights(float LydianBias, float DorianBias, float IonianBias, float AeolianBias)
+{
+	FScopeLock Lock(&AudioLock);
+	ScaleModeDynamicBias[0] = FMath::Max(0.01f, LydianBias);
+	ScaleModeDynamicBias[1] = FMath::Max(0.01f, DorianBias);
+	ScaleModeDynamicBias[2] = FMath::Max(0.01f, IonianBias);
+	ScaleModeDynamicBias[3] = FMath::Max(0.01f, AeolianBias);
 }
 
 int32 UHarmonicConvergenceSynthComponent::GetCurrentScaleDegree() const
@@ -416,13 +447,25 @@ void UHarmonicConvergenceSynthComponent::TriggerOverdriveDrop()
 	OverdriveDropPhaseAngle = 0.0f;
 }
 
-void UHarmonicConvergenceSynthComponent::TriggerEchoRipple(float ChimeFrequencyHz, float StereoPan)
+void UHarmonicConvergenceSynthComponent::TriggerEchoRipple(float ChimeFrequencyHz, float StereoPan, int32 VoiceIndex)
 {
 	FScopeLock Lock(&AudioLock);
-	EchoRippleEnvelope = 1.0f;
-	EchoRipplePhaseAngle = 0.0f;
-	EchoRippleFrequencyHz = FMath::Clamp(ChimeFrequencyHz, 200.0f, 3500.0f);
-	EchoRipplePanPosition = FMath::Clamp(StereoPan, -1.0f, 1.0f);
+	if (VoiceIndex >= 0 && VoiceIndex < MaxVoices)
+	{
+		Voices[VoiceIndex].ExpiryFrequencyHz = FMath::Max(20.0f, ChimeFrequencyHz);
+		Voices[VoiceIndex].StereoPanPosition = FMath::Clamp(StereoPan, -1.0f, 1.0f);
+		Voices[VoiceIndex].TriggerExpiry();
+	}
+	else
+	{
+		if (EchoRippleEnvelope < 0.005f)
+		{
+			EchoRipplePhaseAngle = 0.0f;
+		}
+		EchoRippleEnvelope = 1.0f;
+		EchoRippleFrequencyHz = FMath::Clamp(ChimeFrequencyHz, 200.0f, 3500.0f);
+		EchoRipplePanPosition = FMath::Clamp(StereoPan, -1.0f, 1.0f);
+	}
 }
 
 void UHarmonicConvergenceSynthComponent::SetRhythmicPulseSlot(int32 SlotIndex, bool bActive, int32 RhythmicMask, float NoteFrequencyHz, float StereoPan, EVoiceTimbreProfile TimbreProfile, float Gain, EChordVoiceRole VoiceRole, int32 OctaveOffset)
@@ -430,7 +473,6 @@ void UHarmonicConvergenceSynthComponent::SetRhythmicPulseSlot(int32 SlotIndex, b
 	FScopeLock Lock(&AudioLock);
 	if (SlotIndex >= 0 && SlotIndex < MaxRhythmicSlots)
 	{
-		const bool bWasActive = RhythmicSlots[SlotIndex].bIsActive;
 		RhythmicSlots[SlotIndex].SlotIndex = SlotIndex;
 		RhythmicSlots[SlotIndex].bIsActive = bActive;
 		RhythmicSlots[SlotIndex].RhythmicPatternMask = RhythmicMask;
@@ -440,10 +482,6 @@ void UHarmonicConvergenceSynthComponent::SetRhythmicPulseSlot(int32 SlotIndex, b
 		RhythmicSlots[SlotIndex].StereoPanPosition = FMath::Clamp(StereoPan, -1.0f, 1.0f);
 		RhythmicSlots[SlotIndex].TimbreProfile = TimbreProfile;
 		RhythmicSlots[SlotIndex].SlotGain = FMath::Clamp(Gain, 0.0f, 1.0f);
-		if (bActive && !bWasActive)
-		{
-			RhythmicSlots[SlotIndex].Trigger();
-		}
 	}
 }
 
@@ -474,6 +512,16 @@ int32 UHarmonicConvergenceSynthComponent::OnGenerateAudio(float* OutAudio, int32
 		}
 	}
 	const float DynamicVoiceHeadroomScaling = (ActivePlayingVoiceCount > 0) ? (1.0f / FMath::Sqrt(static_cast<float>(ActivePlayingVoiceCount))) : 1.0f;
+
+	int32 ActiveRhythmicSlotCount = 0;
+	for (int32 SlotIndex = 0; SlotIndex < MaxRhythmicSlots; ++SlotIndex)
+	{
+		if (RhythmicSlots[SlotIndex].bIsActive || RhythmicSlots[SlotIndex].Envelope > 0.0005f)
+		{
+			ActiveRhythmicSlotCount++;
+		}
+	}
+	const float DynamicRhythmicHeadroom = (ActiveRhythmicSlotCount > 0) ? (1.0f / FMath::Pow(static_cast<float>(ActiveRhythmicSlotCount), 0.65f)) : 1.0f;
 
 	for (int32 Frame = 0; Frame < NumFrames; ++Frame)
 	{
@@ -509,11 +557,13 @@ int32 UHarmonicConvergenceSynthComponent::OnGenerateAudio(float* OutAudio, int32
 
 		for (int32 i = 0; i < 3; ++i)
 		{
-			CurrentVoiceRatios[i] = FMath::FInterpTo(CurrentVoiceRatios[i], TargetVoiceRatios[i], InvSampleRate, 4.0f);
+			CurrentVoiceRatios[i] = FMath::FInterpTo(CurrentVoiceRatios[i], TargetVoiceRatios[i], InvSampleRate, 8.0f);
 		}
 
 		float AccumulatedLeftChannel = 0.0f;
 		float AccumulatedRightChannel = 0.0f;
+		float DirectSubLeftChannel = 0.0f;
+		float DirectSubRightChannel = 0.0f;
 
 		// 1. Synthesize Polyphonic Voices
 		for (int32 VoiceIndex = 0; VoiceIndex < MaxVoices; ++VoiceIndex)
@@ -529,30 +579,22 @@ int32 UHarmonicConvergenceSynthComponent::OnGenerateAudio(float* OutAudio, int32
 			AccumulatedRightChannel += VoiceRightSample * DynamicVoiceHeadroomScaling * 0.65f;
 		}
 
-		// 2. Central Grounding Sub-Bass Drone (tracks active chord's lowest voice, octave-folded into 32..90 Hz) + Overdrive Sub-Octave
-		float DroneFreqHz = RootFrequencyHz * CurrentVoiceRatios[0];
+		// 2. Central Grounding Sub-Bass Drone (tracks active chord's true harmonic root, octave-folded into 32..90 Hz) + Overdrive Sub-Octave
+		float DroneFreqHz = RootFrequencyHz * CurrentChordRootRatio;
 		while (DroneFreqHz > 90.0f) DroneFreqHz *= 0.5f;
 		while (DroneFreqHz < 32.7f) DroneFreqHz *= 2.0f;
 
+		// Wrap at 4*PI so both fundamental Sin(Phase) and sub-octave Sin(0.5*Phase) complete full seamless cycles without rectification/DC offset
 		RootSubBassDronePhaseAngle += (DroneFreqHz * 2.0f * PI) * InvSampleRate;
-		if (RootSubBassDronePhaseAngle > 2.0f * PI) RootSubBassDronePhaseAngle -= 2.0f * PI;
+		if (RootSubBassDronePhaseAngle > 4.0f * PI) RootSubBassDronePhaseAngle -= 4.0f * PI;
 
-		const float SubBassDroneSample = FMath::Sin(RootSubBassDronePhaseAngle) * (CurrentConvergenceEnergy * SubBassDroneVolume);
-		const float OverdriveSubSample = FMath::Sin(RootSubBassDronePhaseAngle * 0.5f) * (OverdriveIntensity * 0.22f);
-		AccumulatedLeftChannel += (SubBassDroneSample + OverdriveSubSample);
-		AccumulatedRightChannel += (SubBassDroneSample + OverdriveSubSample);
+		const float DropDuck = 1.0f - OverdriveDropEnvelope * 0.7f;
+		const float SubBassDroneSample = FMath::Sin(RootSubBassDronePhaseAngle) * (CurrentConvergenceEnergy * SubBassDroneVolume * DropDuck);
+		const float OverdriveSubSample = FMath::Sin(RootSubBassDronePhaseAngle * 0.5f) * (OverdriveIntensity * 0.22f * DropDuck);
+		DirectSubLeftChannel += (SubBassDroneSample + OverdriveSubSample);
+		DirectSubRightChannel += (SubBassDroneSample + OverdriveSubSample);
 
 		// 3. Persistent Rhythmic Beat Slots
-		int32 ActiveRhythmicSlotCount = 0;
-		for (int32 SlotIndex = 0; SlotIndex < MaxRhythmicSlots; ++SlotIndex)
-		{
-			if (RhythmicSlots[SlotIndex].bIsActive || RhythmicSlots[SlotIndex].Envelope > 0.0005f)
-			{
-				ActiveRhythmicSlotCount++;
-			}
-		}
-		const float DynamicRhythmicHeadroom = (ActiveRhythmicSlotCount > 0) ? (1.0f / FMath::Pow(static_cast<float>(ActiveRhythmicSlotCount), 0.65f)) : 1.0f;
-
 		for (int32 SlotIndex = 0; SlotIndex < MaxRhythmicSlots; ++SlotIndex)
 		{
 			if (RhythmicSlots[SlotIndex].Envelope > 0.0005f)
@@ -567,8 +609,16 @@ int32 UHarmonicConvergenceSynthComponent::OnGenerateAudio(float* OutAudio, int32
 					RhythmicSlots[SlotIndex].BaseFrequencyHz,
 					bPluckedOrPercussive);
 				RhythmicSlots[SlotIndex].GenerateSample(CurrentSampleRate, SlotFreqHz, PulseLeft, PulseRight);
-				AccumulatedLeftChannel += PulseLeft * DynamicRhythmicHeadroom;
-				AccumulatedRightChannel += PulseRight * DynamicRhythmicHeadroom;
+				if (RhythmicSlots[SlotIndex].TimbreProfile == EVoiceTimbreProfile::SubBassPad)
+				{
+					DirectSubLeftChannel += PulseLeft * DynamicRhythmicHeadroom;
+					DirectSubRightChannel += PulseRight * DynamicRhythmicHeadroom;
+				}
+				else
+				{
+					AccumulatedLeftChannel += PulseLeft * DynamicRhythmicHeadroom;
+					AccumulatedRightChannel += PulseRight * DynamicRhythmicHeadroom;
+				}
 			}
 		}
 
@@ -581,24 +631,50 @@ int32 UHarmonicConvergenceSynthComponent::OnGenerateAudio(float* OutAudio, int32
 			if (OverdriveDropPhaseAngle > 2.0f * PI) OverdriveDropPhaseAngle -= 2.0f * PI;
 
 			const float DropSample = FMath::Tanh(FMath::Sin(OverdriveDropPhaseAngle) * 1.6f) * OverdriveDropEnvelope * 0.45f;
-			AccumulatedLeftChannel += DropSample;
-			AccumulatedRightChannel += DropSample;
+			DirectSubLeftChannel += DropSample;
+			DirectSubRightChannel += DropSample;
 		}
 
-		// Echo Ripple Crystalline Bell on crystal expiration
+		// Echo Ripple Crystalline Bell on crystal expiration (polyphonic per-voice + fallback global, post-filter sparkle fed into reverb)
+		float SparkleLeftChannel = 0.0f;
+		float SparkleRightChannel = 0.0f;
+		for (int32 VoiceIndex = 0; VoiceIndex < MaxVoices; ++VoiceIndex)
+		{
+			FConvergenceVoiceDSP& V = Voices[VoiceIndex];
+			if (V.ExpiryEnvelope > 0.001f)
+			{
+				V.ExpiryEnvelope = FMath::FInterpTo(V.ExpiryEnvelope, 0.0f, InvSampleRate, 3.5f);
+				float BellFreqHz = FMath::Max(20.0f, V.ExpiryFrequencyHz);
+				while (BellFreqHz < 523.25f) BellFreqHz *= 2.0f;
+				while (BellFreqHz > 2093.0f) BellFreqHz *= 0.5f;
+
+				// Slightly stagger decay/pitch per station index (+0.3% per unit) so simultaneous expiries shimmer instead of phase-canceling
+				BellFreqHz *= (1.0f + (VoiceIndex % 4) * 0.002f);
+				V.ExpiryPhaseAngle += (BellFreqHz * 2.0f * PI) * InvSampleRate;
+				if (V.ExpiryPhaseAngle > 4.0f * PI) V.ExpiryPhaseAngle -= 4.0f * PI;
+
+				// Descending 2-tone crystalline release motif (high 2f harmonic fades into 1f fundamental + 0.5f sub-bell)
+				const float HighHarmonic = FMath::Sin(V.ExpiryPhaseAngle * 2.0f) * (0.35f * V.ExpiryEnvelope);
+				const float FundamentalBell = FMath::Sin(V.ExpiryPhaseAngle) * 0.55f + FMath::Sin(V.ExpiryPhaseAngle * 0.5f) * 0.20f;
+				const float RippleSample = (FundamentalBell + HighHarmonic) * V.ExpiryEnvelope * 0.30f;
+				const float RipplePanAngle = (V.StereoPanPosition + 1.0f) * 0.25f * PI;
+				SparkleLeftChannel += RippleSample * FMath::Cos(RipplePanAngle);
+				SparkleRightChannel += RippleSample * FMath::Sin(RipplePanAngle);
+			}
+		}
 		if (EchoRippleEnvelope > 0.001f)
 		{
 			EchoRippleEnvelope = FMath::FInterpTo(EchoRippleEnvelope, 0.0f, InvSampleRate, 3.5f);
 			EchoRipplePhaseAngle += (EchoRippleFrequencyHz * 2.0f * PI) * InvSampleRate;
 			if (EchoRipplePhaseAngle > 2.0f * PI) EchoRipplePhaseAngle -= 2.0f * PI;
 
-			const float RippleSample = (FMath::Sin(EchoRipplePhaseAngle) * 0.6f + FMath::Sin(EchoRipplePhaseAngle * 2.76f) * 0.3f + FMath::Sin(EchoRipplePhaseAngle * 5.4f) * 0.1f) * EchoRippleEnvelope * 0.32f;
+			const float RippleSample = (FMath::Sin(EchoRipplePhaseAngle) * 0.6f + FMath::Sin(EchoRipplePhaseAngle * 3.0f) * 0.3f + FMath::Sin(EchoRipplePhaseAngle * 5.0f) * 0.1f) * EchoRippleEnvelope * 0.32f;
 			const float RipplePanAngle = (EchoRipplePanPosition + 1.0f) * 0.25f * PI;
-			AccumulatedLeftChannel += RippleSample * FMath::Cos(RipplePanAngle);
-			AccumulatedRightChannel += RippleSample * FMath::Sin(RipplePanAngle);
+			SparkleLeftChannel += RippleSample * FMath::Cos(RipplePanAngle);
+			SparkleRightChannel += RippleSample * FMath::Sin(RipplePanAngle);
 		}
 
-		// 4. Ambient Attract Chime
+		// 4. Ambient Attract Chime (post-filter so it stays bright at 0 ConvergenceEnergy)
 		if (AttractChimeEnvelope > 0.001f)
 		{
 			AttractChimeEnvelope = FMath::FInterpTo(AttractChimeEnvelope, 0.0f, InvSampleRate, 0.65f);
@@ -606,24 +682,24 @@ int32 UHarmonicConvergenceSynthComponent::OnGenerateAudio(float* OutAudio, int32
 			if (AttractChimePhaseAngle > 2.0f * PI) AttractChimePhaseAngle -= 2.0f * PI;
 
 			const float ChimeSample = FMath::Sin(AttractChimePhaseAngle) * AttractChimeEnvelope * 0.25f;
-			AccumulatedLeftChannel += ChimeSample;
-			AccumulatedRightChannel += ChimeSample;
+			SparkleLeftChannel += ChimeSample;
+			SparkleRightChannel += ChimeSample;
 		}
 
-		// 5. Ambient Stereo Diffusion Reverb Tank (kept controlled so busy mixes stay clear)
+		// 5. Ambient Stereo Diffusion Reverb Tank (fed only mid/high harmonic voices + chimes; sub-bass & kicks bypass reverb)
 		float ReverbWetLeftSample = 0.0f;
 		float ReverbWetRightSample = 0.0f;
 		const float ReverbFeedbackGain = 0.45f + 0.18f * FMath::Clamp(CurrentConvergenceEnergy * 0.4f, 0.0f, 1.0f) + OverdriveIntensity * 0.08f;
-		DiffusionTank.Process(AccumulatedLeftChannel, AccumulatedRightChannel, ReverbFeedbackGain, ReverbWetLeftSample, ReverbWetRightSample);
+		DiffusionTank.Process(AccumulatedLeftChannel + SparkleLeftChannel, AccumulatedRightChannel + SparkleRightChannel, ReverbFeedbackGain, ReverbWetLeftSample, ReverbWetRightSample);
 
 		const float ReverbWetMixRatio = 0.18f + 0.14f * FMath::Clamp(CurrentConvergenceEnergy * 0.5f, 0.0f, 1.0f) + OverdriveIntensity * 0.06f;
-		const float FilterInputLeft = AccumulatedLeftChannel * (1.0f - ReverbWetMixRatio * 0.5f) + ReverbWetLeftSample * ReverbWetMixRatio;
-		const float FilterInputRight = AccumulatedRightChannel * (1.0f - ReverbWetMixRatio * 0.5f) + ReverbWetRightSample * ReverbWetMixRatio;
+		const float FilterInputLeft = DirectSubLeftChannel + AccumulatedLeftChannel * (1.0f - ReverbWetMixRatio * 0.5f) + ReverbWetLeftSample * ReverbWetMixRatio;
+		const float FilterInputRight = DirectSubRightChannel + AccumulatedRightChannel * (1.0f - ReverbWetMixRatio * 0.5f) + ReverbWetRightSample * ReverbWetMixRatio;
 
-		// 6. Dynamic Resonant Low-Pass Filter (opens smoothly without harsh high-end fizz)
+		// 6. Dynamic Resonant Low-Pass Filter (opens smoothly without harsh high-end fizz; chimes summed after filter)
 		const float FilterCutoffFrequencyHz = FMath::Clamp(FilterBaselineCutoffHz + MaxHoldModulation * 1800.0f + CurrentConvergenceEnergy * 2600.0f + OverdriveIntensity * 2500.0f, 150.0f, 12000.0f);
-		const float FilteredOutputLeft = LeftChannelFilter.Process(FilterInputLeft, FilterCutoffFrequencyHz, FilterResonanceQ, CurrentSampleRate);
-		const float FilteredOutputRight = RightChannelFilter.Process(FilterInputRight, FilterCutoffFrequencyHz, FilterResonanceQ, CurrentSampleRate);
+		const float FilteredOutputLeft = LeftChannelFilter.Process(FilterInputLeft, FilterCutoffFrequencyHz, FilterResonanceQ, CurrentSampleRate) + SparkleLeftChannel;
+		const float FilteredOutputRight = RightChannelFilter.Process(FilterInputRight, FilterCutoffFrequencyHz, FilterResonanceQ, CurrentSampleRate) + SparkleRightChannel;
 
 		if (bMonoMode)
 		{
@@ -906,6 +982,30 @@ bool FHarmonicVoiceLeadingTest::RunTest(const FString& Parameters)
 			Synth->SetScaleMode(EHarmonicScaleMode::AeolianMinor);
 			const int32* VAfter = Synth->CurrentVoicedSemitones;
 			TestTrue(TEXT("Live SetScaleMode voicing valid"), VAfter[0] < VAfter[1] && VAfter[1] < VAfter[2] && VAfter[2] < VAfter[0] + 12);
+
+			// Verify DSP buffer generation has zero DC offset and finite samples in Overdrive
+			Synth->SetConvergenceEnergy(1.5f);
+			Synth->SetOverdriveIntensity(1.0f);
+			float Buffer[512] = {};
+			Synth->OnGenerateAudio(Buffer, 512);
+			float Mean = 0.0f;
+			for (float S : Buffer)
+			{
+				TestTrue(TEXT("Finite DSP output"), FMath::IsFinite(S));
+				Mean += S;
+			}
+			TestTrue(TEXT("Overdrive sub-octave zero DC bias"), FMath::Abs(Mean / 512.0f) < 0.15f);
+		}
+
+		// 9. Verify 4x4 Scale Mode Markov sampling with dynamic timbre bias
+		{
+			UHarmonicConvergenceSynthComponent* Synth = NewObject<UHarmonicConvergenceSynthComponent>();
+			int32 DummySampleRate = 48000;
+			Synth->Init(DummySampleRate);
+			Synth->SetScaleMode(EHarmonicScaleMode::AeolianMinor);
+			Synth->SetScaleModeBiasWeights(1000.0f, 0.0f, 0.0f, 0.0f); // Exclusive Lydian bias
+			Synth->AdvanceChordStep_Unlocked();
+			TestEqual(TEXT("4x4 ScaleMode Markov transitions to biased Lydian mode"), Synth->GetActiveScaleMode(), EHarmonicScaleMode::LydianCelestial);
 		}
 	}
 
