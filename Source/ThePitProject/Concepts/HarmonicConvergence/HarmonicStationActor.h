@@ -80,6 +80,13 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Station|Custom Overrides", meta = (ClampMin = "0.0", ClampMax = "1.0", EditCondition = "bUseCustomSpawnRate"))
 	float TrickleSpawnMultiplier = 0.20f;
 
+	// Vortex forces synced from AudioManager
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Station|Behavior")
+	float VortexForce = 1500.0f;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Station|Behavior")
+	float TrickleVortexForce = 400.0f;
+
 	// Maximum press duration to register as a "Tap to Cut" deactivation on an already-active crystal (synced from AudioManager)
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Station|Behavior")
 	float TapCutMaxDurationSeconds = 0.40f;

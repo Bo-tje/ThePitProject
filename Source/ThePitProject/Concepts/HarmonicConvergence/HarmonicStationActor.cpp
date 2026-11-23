@@ -138,7 +138,7 @@ void AHarmonicStationActor::BeginPlay()
 			Comp->SetVariableVec3(FName(TEXT("User.BeamStartLocation")), GetActorLocation() - CrystalLoc);
 			Comp->SetVariableVec3(FName(TEXT("User.BeamColor")), DynamicColorVec);
 			Comp->SetVariableVec3(FName(TEXT("User.myColor")), DynamicColorVec);
-			Comp->SetVariableFloat(FName(TEXT("User.myVortexForce")), SpawnRate * 1.5f);
+			Comp->SetVariableFloat(FName(TEXT("User.myVortexForce")), VortexForce);
 			Comp->SetVariableFloat(FName(TEXT("User.mySpawnRate")), 0.0f);
 			BeamComponent = Comp;
 		}
@@ -235,11 +235,13 @@ void AHarmonicStationActor::SetPressed(bool bNewPressed)
 		{
 			BeamComponent->SetVariableVec3(FName(TEXT("User.BeamStartLocation")), GetActorLocation() - GetCrystalWorldLocation());
 			BeamComponent->SetVariableFloat(FName(TEXT("User.mySpawnRate")), SpawnRate);
-			BeamComponent->SetVariableFloat(FName(TEXT("User.myVortexForce")), SpawnRate * 1.5f);
+			BeamComponent->SetVariableFloat(FName(TEXT("User.myVortexForce")), VortexForce);
 		}
 		else
 		{
-			BeamComponent->SetVariableFloat(FName(TEXT("User.mySpawnRate")), IsCrystalActive() ? SpawnRate * TrickleSpawnMultiplier : 0.0f);
+			const bool bCrystalActive = IsCrystalActive();
+			BeamComponent->SetVariableFloat(FName(TEXT("User.mySpawnRate")), bCrystalActive ? SpawnRate * TrickleSpawnMultiplier : 0.0f);
+			BeamComponent->SetVariableFloat(FName(TEXT("User.myVortexForce")), bCrystalActive ? TrickleVortexForce : 0.0f);
 		}
 	}
 
@@ -250,7 +252,9 @@ void AHarmonicStationActor::UpdateBeam()
 {
 	if (BeamComponent && !bIsPressed)
 	{
-		BeamComponent->SetVariableFloat(FName(TEXT("User.mySpawnRate")), IsCrystalActive() ? SpawnRate * TrickleSpawnMultiplier : 0.0f);
+		const bool bCrystalActive = IsCrystalActive();
+		BeamComponent->SetVariableFloat(FName(TEXT("User.mySpawnRate")), bCrystalActive ? SpawnRate * TrickleSpawnMultiplier : 0.0f);
+		BeamComponent->SetVariableFloat(FName(TEXT("User.myVortexForce")), bCrystalActive ? TrickleVortexForce : 0.0f);
 	}
 }
 

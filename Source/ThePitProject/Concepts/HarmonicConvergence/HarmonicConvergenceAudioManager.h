@@ -87,6 +87,25 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Harmonics|Setup", meta = (ClampMin = "0.0", ClampMax = "1.0"))
 	float StationTrickleMultiplier = 0.20f;
 
+	// --- Vortex Force ---
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Harmonics|Vortex Force", meta = (ClampMin = "0.0"))
+	float DefaultVortexForce = 1500.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Harmonics|Vortex Force", meta = (ClampMin = "0.0"))
+	float TrickleVortexForce = 400.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Harmonics|Vortex Force", meta = (ClampMin = "0.0"))
+	float AeolianVortexForce = 1150.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Harmonics|Vortex Force", meta = (ClampMin = "0.0"))
+	float DorianVortexForce = 1450.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Harmonics|Vortex Force", meta = (ClampMin = "0.0"))
+	float LydianVortexForce = 1850.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Harmonics|Vortex Force", meta = (ClampMin = "0.0"))
+	float IonianVortexForce = 2200.0f;
+
 	UFUNCTION(BlueprintCallable, Category = "Harmonics|Setup")
 	void SyncHardwareConfig();
 

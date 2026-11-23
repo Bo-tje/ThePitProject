@@ -38,14 +38,16 @@ void AHarmonicConvergenceAudioManager::BeginPlay()
 		if (Station)
 		{
 			Station->TapCutMaxDurationSeconds = TapCutMaxDurationSeconds;
+			Station->VortexForce = DefaultVortexForce;
+			Station->TrickleVortexForce = TrickleVortexForce;
 			if (!Station->bUseCustomSpawnRate)
 			{
 				Station->SpawnRate = StationBeamSpawnRate;
 				Station->TrickleSpawnMultiplier = StationTrickleMultiplier;
-				if (Station->BeamComponent)
-				{
-					Station->BeamComponent->SetVariableFloat(FName(TEXT("User.myVortexForce")), Station->SpawnRate * 1.5f);
-				}
+			}
+			if (Station->BeamComponent)
+			{
+				Station->BeamComponent->SetVariableFloat(FName(TEXT("User.myVortexForce")), Station->VortexForce);
 			}
 			Station->OnStationPressedChanged.AddDynamic(this, &AHarmonicConvergenceAudioManager::HandleStationPressedChanged);
 			if (Station->CrystalActor)
@@ -510,10 +512,10 @@ void AHarmonicConvergenceAudioManager::UpdateModalHarmonyAndVisuals(float DeltaT
 
 	if (ScaleMode != PreviousScaleMode)
 	{
-		const float ModalVortexMultiplier =
-			(ScaleMode == EHarmonicScaleMode::IonianMajor)     ? 2.2f :
-			(ScaleMode == EHarmonicScaleMode::LydianCelestial) ? 1.85f :
-			(ScaleMode == EHarmonicScaleMode::DorianAmbient)   ? 1.45f : 1.15f;
+		const float ModalVortexForce =
+			(ScaleMode == EHarmonicScaleMode::IonianMajor)     ? IonianVortexForce :
+			(ScaleMode == EHarmonicScaleMode::LydianCelestial) ? LydianVortexForce :
+			(ScaleMode == EHarmonicScaleMode::DorianAmbient)   ? DorianVortexForce : AeolianVortexForce;
 
 		for (AHarmonicStationActor* Station : Stations)
 		{
@@ -521,6 +523,8 @@ void AHarmonicConvergenceAudioManager::UpdateModalHarmonyAndVisuals(float DeltaT
 			{
 				continue;
 			}
+
+			Station->VortexForce = ModalVortexForce;
 
 			const int32 UnitIdx = FMath::Clamp(Station->StationIndex / 4, 0, 5);
 			const FLinearColor ThemeColor = GetModalAtmosphereColor(ScaleMode, UnitIdx);
@@ -535,7 +539,7 @@ void AHarmonicConvergenceAudioManager::UpdateModalHarmonyAndVisuals(float DeltaT
 				const FVector DynamicColorVec = FVector(EffectiveColor.R, EffectiveColor.G, EffectiveColor.B) * 30.0f;
 				Station->BeamComponent->SetVariableVec3(FName(TEXT("User.BeamColor")), DynamicColorVec);
 				Station->BeamComponent->SetVariableVec3(FName(TEXT("User.myColor")), DynamicColorVec);
-				Station->BeamComponent->SetVariableFloat(FName(TEXT("User.myVortexForce")), Station->SpawnRate * ModalVortexMultiplier);
+				Station->BeamComponent->SetVariableFloat(FName(TEXT("User.myVortexForce")), (!Station->bIsPressed && Station->IsCrystalActive()) ? Station->TrickleVortexForce : ModalVortexForce);
 			}
 		}
 	}
