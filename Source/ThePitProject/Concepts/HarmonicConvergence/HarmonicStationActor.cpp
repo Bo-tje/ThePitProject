@@ -8,7 +8,7 @@
 
 AHarmonicStationActor::AHarmonicStationActor()
 {
-	PrimaryActorTick.bCanEverTick = false;
+	PrimaryActorTick.bCanEverTick = true;
 
 	StationRoot = CreateDefaultSubobject<USceneComponent>(TEXT("StationRoot"));
 #if WITH_EDITORONLY_DATA
@@ -246,6 +246,35 @@ void AHarmonicStationActor::SetPressed(bool bNewPressed)
 	}
 
 	OnStationPressedChanged.Broadcast(this, bIsPressed);
+}
+
+void AHarmonicStationActor::Tick(float DeltaTime)
+{
+	Super::Tick(DeltaTime);
+
+	if (!BeamComponent)
+	{
+		return;
+	}
+
+	if (bIsPressed)
+	{
+		const float ChargeAlpha = IsCrystalActive() ? 1.0f : FMath::Clamp(GetChargeProgress(), 0.0f, 1.0f);
+		const float Ramp = FMath::Lerp(0.25f, 1.0f, ChargeAlpha);
+		BeamComponent->SetVariableFloat(FName(TEXT("User.mySpawnRate")), SpawnRate * Ramp);
+		BeamComponent->SetVariableFloat(FName(TEXT("User.myVortexForce")), VortexForce * Ramp);
+	}
+	else if (IsCrystalActive())
+	{
+		float WarningPulse = 1.0f;
+		if (CrystalActor && CrystalActor->RemainingLifespan <= 5.0f)
+		{
+			const float Wave = 0.5f + 0.5f * FMath::Sin(GetWorld()->GetTimeSeconds() * 10.0f);
+			WarningPulse = FMath::Lerp(0.35f, 1.15f, Wave);
+		}
+		BeamComponent->SetVariableFloat(FName(TEXT("User.mySpawnRate")), SpawnRate * TrickleSpawnMultiplier * WarningPulse);
+		BeamComponent->SetVariableFloat(FName(TEXT("User.myVortexForce")), TrickleVortexForce * WarningPulse);
+	}
 }
 
 void AHarmonicStationActor::UpdateBeam()

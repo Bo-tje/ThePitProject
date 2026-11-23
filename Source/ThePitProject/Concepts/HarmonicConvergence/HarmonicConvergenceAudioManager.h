@@ -133,6 +133,30 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Harmonics|Visuals", meta = (ClampMin = "0.0", ClampMax = "1.0"))
 	float VisualThemeBlendStrength = 0.55f;
 
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Harmonics|Visuals")
+	FLinearColor AeolianMinorColor = FLinearColor(0.55f, 0.10f, 0.85f);
+	
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Harmonics|Visuals")
+	FLinearColor AltAeolianMinorColor = FLinearColor(0.15f, 0.20f, 0.95f);
+	
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Harmonics|Visuals")
+	FLinearColor DorianAmbientColor = FLinearColor(0.95f, 0.15f, 0.65f); 
+	
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Harmonics|Visuals")
+	FLinearColor AltDorianAmbientColor = FLinearColor(0.0f, 0.95f, 0.90f); 
+	
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Harmonics|Visuals")
+	FLinearColor IonianMajorColor = FLinearColor(1.0f, 0.55f, 0.15f);
+	
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Harmonics|Visuals")
+	FLinearColor AltIonianMajorColor = FLinearColor(1.0f, 0.92f, 0.35f); 
+	
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Harmonics|Visuals")
+	FLinearColor LydianCelestialColor = FLinearColor(0.20f, 0.90f, 1.0f); 
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Harmonics|Visuals")
+	FLinearColor AltLydianCelestialColor = FLinearColor(0.15f, 1.0f, 0.60f);
+	
 	// --- Control & Queries ---
 	UFUNCTION(BlueprintCallable, Category = "Harmonics|Control")
 	void SetHarmonicScale(EHarmonicScaleMode NewScaleMode);

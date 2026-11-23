@@ -510,37 +510,35 @@ void AHarmonicConvergenceAudioManager::UpdateModalHarmonyAndVisuals(float DeltaT
 		}
 	}
 
-	if (ScaleMode != PreviousScaleMode)
+	const float TargetVortexForce =
+		(ScaleMode == EHarmonicScaleMode::IonianMajor)     ? IonianVortexForce :
+		(ScaleMode == EHarmonicScaleMode::LydianCelestial) ? LydianVortexForce :
+		(ScaleMode == EHarmonicScaleMode::DorianAmbient)   ? DorianVortexForce : AeolianVortexForce;
+
+	for (AHarmonicStationActor* Station : Stations)
 	{
-		const float ModalVortexForce =
-			(ScaleMode == EHarmonicScaleMode::IonianMajor)     ? IonianVortexForce :
-			(ScaleMode == EHarmonicScaleMode::LydianCelestial) ? LydianVortexForce :
-			(ScaleMode == EHarmonicScaleMode::DorianAmbient)   ? DorianVortexForce : AeolianVortexForce;
-
-		for (AHarmonicStationActor* Station : Stations)
+		if (!Station)
 		{
-			if (!Station)
-			{
-				continue;
-			}
+			continue;
+		}
 
-			Station->VortexForce = ModalVortexForce;
+		Station->VortexForce = FMath::FInterpTo(Station->VortexForce, TargetVortexForce, DeltaTime, 2.0f);
 
-			const int32 UnitIdx = FMath::Clamp(Station->StationIndex / 4, 0, 5);
-			const FLinearColor ThemeColor = GetModalAtmosphereColor(ScaleMode, UnitIdx);
-			const FLinearColor EffectiveColor = FLinearColor::LerpUsingHSV(Station->StreamColor, ThemeColor, VisualThemeBlendStrength);
+		const int32 UnitIdx = FMath::Clamp(Station->StationIndex / 4, 0, 5);
+		const FLinearColor ThemeColor = GetModalAtmosphereColor(ScaleMode, UnitIdx);
+		const FLinearColor TargetColor = FLinearColor::LerpUsingHSV(Station->StreamColor, ThemeColor, VisualThemeBlendStrength);
 
-			if (Station->CrystalActor)
-			{
-				Station->CrystalActor->CrystalColor = EffectiveColor;
-			}
-			if (Station->BeamComponent)
-			{
-				const FVector DynamicColorVec = FVector(EffectiveColor.R, EffectiveColor.G, EffectiveColor.B) * 30.0f;
-				Station->BeamComponent->SetVariableVec3(FName(TEXT("User.BeamColor")), DynamicColorVec);
-				Station->BeamComponent->SetVariableVec3(FName(TEXT("User.myColor")), DynamicColorVec);
-				Station->BeamComponent->SetVariableFloat(FName(TEXT("User.myVortexForce")), (!Station->bIsPressed && Station->IsCrystalActive()) ? Station->TrickleVortexForce : ModalVortexForce);
-			}
+		FLinearColor CurrentColor = TargetColor;
+		if (Station->CrystalActor)
+		{
+			Station->CrystalActor->CrystalColor = FMath::CInterpTo(Station->CrystalActor->CrystalColor, TargetColor, DeltaTime, 2.0f);
+			CurrentColor = Station->CrystalActor->CrystalColor;
+		}
+		if (Station->BeamComponent)
+		{
+			const FVector DynamicColorVec = FVector(CurrentColor.R, CurrentColor.G, CurrentColor.B) * 30.0f;
+			Station->BeamComponent->SetVariableVec3(FName(TEXT("User.BeamColor")), DynamicColorVec);
+			Station->BeamComponent->SetVariableVec3(FName(TEXT("User.myColor")), DynamicColorVec);
 		}
 	}
 }
