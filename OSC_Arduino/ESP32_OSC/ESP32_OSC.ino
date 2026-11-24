@@ -9,7 +9,7 @@ const bool DEBUG_OFFLINE_MODE = false;
 char ssid[] = "HarmonicInstallation";
 char pass[] = "Boislief45";
 
-IPAddress outIp(192, 168, 0, 100);
+IPAddress outIp(192, 168, 0, 102);
 const unsigned int outPort = 8000;
 const unsigned int inPort  = 8888;
 
