@@ -8,6 +8,8 @@
 
 class UHarmonicConvergenceSynthComponent;
 class AHarmonicCrystalActor;
+class USoundBase;
+class UAudioComponent;
 
 UCLASS(Blueprintable, BlueprintType)
 class THEPITPROJECT_API AHarmonicConvergenceAudioManager : public AActor
@@ -46,6 +48,9 @@ public:
 	// --- Audio & Timing ---
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Harmonics|Audio")
 	TObjectPtr<UHarmonicConvergenceSynthComponent> ProceduralSynthComponent;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Harmonics|Audio")
+	TObjectPtr<UAudioComponent> IdleAudioComponent;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Harmonics|Setup")
 	float MasterBPM = 120.0f;
@@ -117,7 +122,13 @@ public:
 	float AttractModeTimeoutSeconds = 15.0f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Harmonics|Attract")
-	float AttractChimeIntervalSeconds = 4.0f;
+	TObjectPtr<USoundBase> IdleSoundscape = nullptr;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Harmonics|Attract", meta = (ClampMin = "0.0", ClampMax = "2.0"))
+	float IdleSoundscapeVolume = 0.6f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Harmonics|Attract", meta = (ClampMin = "0.1"))
+	float IdleSoundscapeFadeTime = 2.0f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Harmonics|Overdrive")
 	int32 OverdriveThreshold = 8;
@@ -132,6 +143,31 @@ public:
 	// How strongly the active Scale Mode atmosphere palette tints station Niagara beams & crystals (0 = original station colors, 1 = full thematic shift)
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Harmonics|Visuals", meta = (ClampMin = "0.0", ClampMax = "1.0"))
 	float VisualThemeBlendStrength = 0.55f;
+
+	// --- Modal Atmosphere Colors ---
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Harmonics|Visuals")
+	FLinearColor LydianPrimaryColor = FLinearColor(0.15f, 1.0f, 0.60f);
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Harmonics|Visuals")
+	FLinearColor LydianAlternateColor = FLinearColor(0.20f, 0.90f, 1.0f);
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Harmonics|Visuals")
+	FLinearColor DorianPrimaryColor = FLinearColor(0.0f, 0.95f, 0.90f);
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Harmonics|Visuals")
+	FLinearColor DorianAlternateColor = FLinearColor(0.95f, 0.15f, 0.65f);
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Harmonics|Visuals")
+	FLinearColor IonianPrimaryColor = FLinearColor(1.0f, 0.92f, 0.35f);
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Harmonics|Visuals")
+	FLinearColor IonianAlternateColor = FLinearColor(1.0f, 0.55f, 0.15f);
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Harmonics|Visuals")
+	FLinearColor AeolianPrimaryColor = FLinearColor(0.15f, 0.20f, 0.95f);
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Harmonics|Visuals")
+	FLinearColor AeolianAlternateColor = FLinearColor(0.55f, 0.10f, 0.85f);
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Harmonics|Visuals")
 	FLinearColor AeolianMinorColor = FLinearColor(0.55f, 0.10f, 0.85f);
@@ -173,9 +209,6 @@ protected:
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Harmonics|Runtime")
 	float InactivityDurationSeconds = 0.0f;
-
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Harmonics|Runtime")
-	float TimeSinceLastAttractChimeSeconds = 0.0f;
 
 private:
 	void DiscoverStations();

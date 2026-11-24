@@ -248,9 +248,14 @@ struct FMarkovChordRow
 	UPROPERTY(EditAnywhere, Category = "Harmonics|Markov", meta = (ClampMin = "0.0"))
 	float Weights[7] = { 50.0f, 50.0f, 33.0f, 66.0f, 66.0f, 33.0f, 10.0f };
 
-	FORCEINLINE int32 SampleNextDegree(float NormalizedRand01, int32 FallbackDegree) const
+	FORCEINLINE int32 SampleNextDegree(const float DynamicBias[7], float NormalizedRand01, int32 FallbackDegree) const
 	{
-		return SampleWeightedIndex(Weights, 7, NormalizedRand01, FallbackDegree);
+		float BiasedWeights[7];
+		for (int32 DegreeIndex = 0; DegreeIndex < 7; ++DegreeIndex)
+		{
+			BiasedWeights[DegreeIndex] = FMath::Max(0.0f, Weights[DegreeIndex] * FMath::Max(0.0f, DynamicBias[DegreeIndex]));
+		}
+		return SampleWeightedIndex(BiasedWeights, 7, NormalizedRand01, FallbackDegree);
 	}
 };
 

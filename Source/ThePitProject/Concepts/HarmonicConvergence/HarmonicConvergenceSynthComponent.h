@@ -259,6 +259,10 @@ public:
 	// Sets dynamic timbre-driven bias weights for the 4x4 ScaleModeTransitions matrix [Lydian, Dorian, Ionian, Aeolian]
 	void SetScaleModeBiasWeights(float LydianBias, float DorianBias, float IonianBias, float AeolianBias);
 
+	// Dynamically biases the 7x7 chord degree transition matrix based on harmonic energy and overdrive
+	UFUNCTION(BlueprintCallable, Category = "Harmonics|Harmony")
+	void SetChordTensionBias(float Energy01, bool bOverdrive);
+
 	UFUNCTION(BlueprintPure, Category = "Harmonics|Synth")
 	int32 GetCurrentScaleDegree() const;
 
@@ -305,6 +309,7 @@ private:
 
 	EHarmonicScaleMode ActiveScaleMode = EHarmonicScaleMode::LydianCelestial;
 	float ScaleModeDynamicBias[4] = { 1.0f, 1.0f, 1.0f, 1.0f };
+	float ChordDegreeDynamicBias[7] = { 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f };
 	int32 CurrentMeasureIndex = 0;
 	int32 CurrentScaleDegree = 0;
 	int32 CurrentVoicedSemitones[3] = { 0, 3, 7 };

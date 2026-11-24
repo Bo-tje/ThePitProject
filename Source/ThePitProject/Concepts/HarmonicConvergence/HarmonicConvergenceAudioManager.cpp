@@ -3,6 +3,8 @@
 #include "InputManagerSubSystem.h"
 #include "Kismet/GameplayStatics.h"
 #include "NiagaraComponent.h"
+#include "Components/AudioComponent.h"
+#include "Sound/SoundBase.h"
 
 AHarmonicConvergenceAudioManager::AHarmonicConvergenceAudioManager()
 {
@@ -10,6 +12,10 @@ AHarmonicConvergenceAudioManager::AHarmonicConvergenceAudioManager()
 
 	ProceduralSynthComponent = CreateDefaultSubobject<UHarmonicConvergenceSynthComponent>(TEXT("ProceduralConvergenceSynth"));
 	SetRootComponent(ProceduralSynthComponent);
+
+	IdleAudioComponent = CreateDefaultSubobject<UAudioComponent>(TEXT("IdleSoundscapeAudio"));
+	IdleAudioComponent->SetupAttachment(RootComponent);
+	IdleAudioComponent->bAutoActivate = false;
 }
 
 AHarmonicStationActor* AHarmonicConvergenceAudioManager::FindStationByCrystal(const AHarmonicCrystalActor* Crystal) const
@@ -72,6 +78,11 @@ void AHarmonicConvergenceAudioManager::BeginPlay()
 		}
 	}
 
+	if (IdleAudioComponent && IdleSoundscape)
+	{
+		IdleAudioComponent->SetSound(IdleSoundscape);
+	}
+
 	SyncHardwareConfig();
 }
 
@@ -113,6 +124,11 @@ void AHarmonicConvergenceAudioManager::SetMasterBPM(float NewBPM)
 	{
 		ProceduralSynthComponent->SetMasterBPM(MasterBPM);
 	}
+	if (IdleAudioComponent && IdleSoundscape)
+	{
+		IdleAudioComponent->SetSound(IdleSoundscape);
+	}
+
 	SyncHardwareConfig();
 }
 
@@ -444,14 +460,14 @@ FLinearColor AHarmonicConvergenceAudioManager::GetModalAtmosphereColor(EHarmonic
 	switch (Mode)
 	{
 	case EHarmonicScaleMode::AeolianMinor:
-		return bIsAlternateUnit ? FLinearColor(0.55f, 0.10f, 0.85f) : FLinearColor(0.15f, 0.20f, 0.95f);
+		return bIsAlternateUnit ? AeolianAlternateColor : AeolianPrimaryColor;
 	case EHarmonicScaleMode::DorianAmbient:
-		return bIsAlternateUnit ? FLinearColor(0.95f, 0.15f, 0.65f) : FLinearColor(0.0f, 0.95f, 0.90f);
+		return bIsAlternateUnit ? DorianAlternateColor : DorianPrimaryColor;
 	case EHarmonicScaleMode::IonianMajor:
-		return bIsAlternateUnit ? FLinearColor(1.0f, 0.55f, 0.15f) : FLinearColor(1.0f, 0.92f, 0.35f);
+		return bIsAlternateUnit ? IonianAlternateColor : IonianPrimaryColor;
 	case EHarmonicScaleMode::LydianCelestial:
 	default:
-		return bIsAlternateUnit ? FLinearColor(0.20f, 0.90f, 1.0f) : FLinearColor(0.15f, 1.0f, 0.60f);
+		return bIsAlternateUnit ? LydianAlternateColor : LydianPrimaryColor;
 	}
 }
 
@@ -473,6 +489,7 @@ void AHarmonicConvergenceAudioManager::UpdateModalHarmonyAndVisuals(float DeltaT
 			? (2.0f + (ActiveWarmPads + ActiveSubBasses + ActiveChimes + ActiveVortexSweeps) * 0.6f)
 			: 0.5f;
 		ProceduralSynthComponent->SetScaleModeBiasWeights(LydianBias, DorianBias, IonianBias, AeolianBias);
+		ProceduralSynthComponent->SetChordTensionBias(FMath::Clamp(ConvergenceEnergy, 0.0f, 1.0f), bIsHarmonicOverdrive);
 
 		if (bAutoScaleMode && ScaleMode != EHarmonicScaleMode::CustomFrequencies)
 		{
@@ -506,7 +523,12 @@ void AHarmonicConvergenceAudioManager::UpdateModalHarmonyAndVisuals(float DeltaT
 		}
 		if (FMath::Abs(MasterBPM - LastSyncedHardwareBPM) >= 2.0f)
 		{
-			SyncHardwareConfig();
+			if (IdleAudioComponent && IdleSoundscape)
+	{
+		IdleAudioComponent->SetSound(IdleSoundscape);
+	}
+
+	SyncHardwareConfig();
 		}
 	}
 
@@ -552,32 +574,20 @@ void AHarmonicConvergenceAudioManager::UpdateAttractMode(float DeltaTime, int32 
 
 	if (ActiveVoiceCount == 0 && ActiveLoopers == 0)
 	{
-		InactivityDurationSeconds += DeltaTime;
-		if (InactivityDurationSeconds >= AttractModeTimeoutSeconds)
+		if (IdleAudioComponent && IdleSoundscape && !IdleAudioComponent->IsPlaying())
 		{
-			TimeSinceLastAttractChimeSeconds += DeltaTime;
-			if (TimeSinceLastAttractChimeSeconds >= AttractChimeIntervalSeconds && !Stations.IsEmpty())
-			{
-				TimeSinceLastAttractChimeSeconds = 0.0f;
-				const int32 RandomIdx = FMath::RandRange(0, Stations.Num() - 1);
-				if (AHarmonicStationActor* Station = Stations[RandomIdx])
-				{
-					if (ProceduralSynthComponent)
-					{
-						const float LiveFreqHz = ProceduralSynthComponent->GetChordVoiceFrequencyHz(GetEffectiveVoiceRole(Station), Station->OctaveOffset, Station->BaseFrequencyHz);
-						ProceduralSynthComponent->TriggerAttractPing(LiveFreqHz);
-					}
-					if (Station->CrystalActor)
-					{
-						Station->CrystalActor->TriggerBeatPulse(0.8f);
-					}
-				}
-			}
+			IdleAudioComponent->FadeIn(IdleSoundscapeFadeTime, IdleSoundscapeVolume);
 		}
+
+		InactivityDurationSeconds += DeltaTime;
 	}
 	else
 	{
+		if (IdleAudioComponent && IdleAudioComponent->IsPlaying())
+		{
+			IdleAudioComponent->FadeOut(IdleSoundscapeFadeTime, 0.0f);
+		}
+
 		InactivityDurationSeconds = 0.0f;
-		TimeSinceLastAttractChimeSeconds = 0.0f;
 	}
 }

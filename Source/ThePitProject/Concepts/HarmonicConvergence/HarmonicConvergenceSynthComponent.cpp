@@ -311,7 +311,7 @@ void UHarmonicConvergenceSynthComponent::AdvanceChordStep_Unlocked()
 
 		const int32 FallbackDegree = (CurrentScaleDegree + 1) % 7;
 		CurrentScaleDegree = MarkovTransitions.IsValidIndex(CurrentScaleDegree)
-			? MarkovTransitions[CurrentScaleDegree].SampleNextDegree(FMath::FRand(), FallbackDegree)
+			? MarkovTransitions[CurrentScaleDegree].SampleNextDegree(ChordDegreeDynamicBias, FMath::FRand(), FallbackDegree)
 			: FallbackDegree;
 
 		FHarmonicChord NextChord = FHarmonicChord::FromScaleDegree(ActiveScaleMode, CurrentScaleDegree, 0);
@@ -347,6 +347,22 @@ void UHarmonicConvergenceSynthComponent::SetScaleModeBiasWeights(float LydianBia
 	ScaleModeDynamicBias[1] = FMath::Max(0.01f, DorianBias);
 	ScaleModeDynamicBias[2] = FMath::Max(0.01f, IonianBias);
 	ScaleModeDynamicBias[3] = FMath::Max(0.01f, AeolianBias);
+}
+
+void UHarmonicConvergenceSynthComponent::SetChordTensionBias(float Energy01, bool bOverdrive)
+{
+	FScopeLock Lock(&AudioLock);
+	const float T = FMath::Clamp(Energy01, 0.0f, 1.0f);
+	const float OverdriveBoost = bOverdrive ? 0.35f : 0.0f;
+
+	// Low energy favors stable I / IV / V; high energy & overdrive unlock II / III / VI / VII
+	ChordDegreeDynamicBias[0] = FMath::Lerp(1.45f, 0.90f, T); // I
+	ChordDegreeDynamicBias[1] = FMath::Lerp(0.65f, 1.50f, T) + OverdriveBoost; // II
+	ChordDegreeDynamicBias[2] = FMath::Lerp(0.60f, 1.45f, T) + OverdriveBoost; // III
+	ChordDegreeDynamicBias[3] = FMath::Lerp(1.30f, 1.05f, T); // IV
+	ChordDegreeDynamicBias[4] = FMath::Lerp(1.35f, 1.15f, T); // V
+	ChordDegreeDynamicBias[5] = FMath::Lerp(0.85f, 1.45f, T) + OverdriveBoost; // VI
+	ChordDegreeDynamicBias[6] = FMath::Lerp(0.45f, 1.55f, T) + OverdriveBoost; // VII
 }
 
 int32 UHarmonicConvergenceSynthComponent::GetCurrentScaleDegree() const
