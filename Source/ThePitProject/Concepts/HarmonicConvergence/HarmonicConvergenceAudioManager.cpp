@@ -4,6 +4,8 @@
 #include "Kismet/GameplayStatics.h"
 #include "NiagaraComponent.h"
 #include "Components/AudioComponent.h"
+#include "Components/PointLightComponent.h"
+#include "Engine/PointLight.h"
 #include "Sound/SoundBase.h"
 
 AHarmonicConvergenceAudioManager::AHarmonicConvergenceAudioManager()
@@ -193,6 +195,17 @@ void AHarmonicConvergenceAudioManager::HandleStationPressedChanged(AHarmonicStat
 	if (bPressed)
 	{
 		ProceduralSynthComponent->NoteOn(Station->StationIndex, Station->BaseFrequencyHz, Station->PanPosition, GetEffectiveVoiceRole(Station), Station->OctaveOffset);
+		if (BeatPointLights.Num() > 0)
+		{
+			if (APointLight* Light = BeatPointLights[Station->StationIndex % BeatPointLights.Num()])
+			{
+				if (ULightComponent* LightComp = Light->GetLightComponent())
+				{
+					LightComp->SetLightColor(Station->StreamColor);
+					LightComp->SetIntensity(BeatLightPeakIntensity);
+				}
+			}
+		}
 	}
 	else
 	{
@@ -354,6 +367,44 @@ void AHarmonicConvergenceAudioManager::Tick(float DeltaTime)
 						InputSubsystem->SendOSCFloat(TEXT("/pit/beat"), 1.0f);
 					}
 				}
+
+				const bool bLightsActive = ActiveVoiceCount > 0 || ConvergenceEnergy > 0.05f;
+				if (BeatPointLights.Num() > 0 && bLightsActive)
+				{
+					FLinearColor BeatColor = GetModalAtmosphereColor(ScaleMode, (CurrentStep / 4) % 6);
+					for (AHarmonicStationActor* Station : Stations)
+					{
+						if (Station && Station->IsCrystalActive() && (Station->RhythmicPatternMask & StepBit))
+						{
+							BeatColor = Station->StreamColor;
+							break;
+						}
+					}
+					const int32 LightIdx = (CurrentStep / 4) % BeatPointLights.Num();
+					auto PulseLight = [&](int32 Idx, float Scale)
+					{
+						if (APointLight* Light = BeatPointLights[Idx])
+						{
+							if (ULightComponent* LightComp = Light->GetLightComponent())
+							{
+								LightComp->SetLightColor(BeatColor);
+								LightComp->SetIntensity(BeatLightPeakIntensity * Scale);
+							}
+						}
+					};
+					PulseLight(LightIdx, 1.0f);
+					if (CurrentStep == 0 && ConvergenceEnergy > 1.2f)
+					{
+						for (int32 i = 0; i < BeatPointLights.Num(); ++i)
+						{
+							if (i != LightIdx) { PulseLight(i, 0.55f); }
+						}
+					}
+					else if (ConvergenceEnergy > 0.8f && BeatPointLights.Num() > 1)
+					{
+						PulseLight((LightIdx + BeatPointLights.Num() / 2) % BeatPointLights.Num(), 0.7f);
+					}
+				}
 			}
 
 			for (AHarmonicStationActor* Station : Stations)
@@ -362,6 +413,26 @@ void AHarmonicConvergenceAudioManager::Tick(float DeltaTime)
 				{
 					Station->CrystalActor->TriggerBeatPulse(1.0f);
 				}
+			}
+		}
+	}
+
+	const bool bLightsIdle = ActiveVoiceCount == 0 && ConvergenceEnergy <= 0.05f;
+	const float BreathRate = (MasterBPM / 60.0f) * PI * 0.5f;
+	const float IdleBreath = bLightsIdle
+		? BeatLightPeakIntensity * 0.15f * (0.5f + 0.5f * FMath::Sin(GetWorld()->GetTimeSeconds() * BreathRate))
+		: 0.0f;
+	for (APointLight* Light : BeatPointLights)
+	{
+		if (Light)
+		{
+			if (ULightComponent* LightComp = Light->GetLightComponent())
+			{
+				if (bLightsIdle)
+				{
+					LightComp->SetLightColor(GetModalAtmosphereColor(ScaleMode, 0));
+				}
+				LightComp->SetIntensity(FMath::FInterpTo(LightComp->Intensity, IdleBreath, DeltaTime, 8.0f));
 			}
 		}
 	}

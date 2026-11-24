@@ -192,6 +192,12 @@ public:
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Harmonics|Visuals")
 	FLinearColor AltLydianCelestialColor = FLinearColor(0.15f, 1.0f, 0.60f);
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Harmonics|Visuals")
+	TArray<TObjectPtr<class APointLight>> BeatPointLights;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Harmonics|Visuals")
+	float BeatLightPeakIntensity = 5000.0f;
 	
 	// --- Control & Queries ---
 	UFUNCTION(BlueprintCallable, Category = "Harmonics|Control")

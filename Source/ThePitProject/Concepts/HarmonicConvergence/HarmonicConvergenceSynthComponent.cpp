@@ -445,6 +445,7 @@ void UHarmonicConvergenceSynthComponent::TriggerVoiceIgnition(int32 VoiceIndex)
 	if (VoiceIndex >= 0 && VoiceIndex < MaxVoices)
 	{
 		Voices[VoiceIndex].TriggerIgnition();
+		RhythmicSlots[VoiceIndex].Trigger();
 	}
 }
 

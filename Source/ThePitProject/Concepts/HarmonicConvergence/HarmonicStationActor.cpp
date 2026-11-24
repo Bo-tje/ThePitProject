@@ -64,40 +64,40 @@ void AHarmonicStationActor::ApplyDefaultPresetForIndex()
 	};
 
 	static const FStationPreset Presets[24] = {
-		// Unit 1 (0–3): South Station - Beats / Sub-Bass
-		{ TEXT("player1"),  EVoiceTimbreProfile::SubBassPad,       FLinearColor(0.0f, 0.9f, 1.0f),  0x1111, EChordVoiceRole::LowestVoice,  0 },
-		{ TEXT("player2"),  EVoiceTimbreProfile::SubBassPad,       FLinearColor(0.0f, 0.6f, 1.0f),  0x0449, EChordVoiceRole::LowestVoice,  1 },
-		{ TEXT("player3"),  EVoiceTimbreProfile::SubBassPad,       FLinearColor(0.1f, 0.4f, 1.0f),  0x1010, EChordVoiceRole::MiddleVoice,  2 },
-		{ TEXT("player4"),  EVoiceTimbreProfile::SubBassPad,       FLinearColor(0.0f, 0.8f, 0.9f),  0x4444, EChordVoiceRole::HighestVoice, 3 },
+		// Unit 1 (0–3): South Station - Diverse Mini-Band (Sub, Pad, Chime, Sweep)
+		{ TEXT("player1"),  EVoiceTimbreProfile::SubBassPad,       FLinearColor(0.0f, 0.9f, 1.0f),   0x1111, EChordVoiceRole::LowestVoice,  0 },
+		{ TEXT("player2"),  EVoiceTimbreProfile::WarmPad,          FLinearColor(1.0f, 0.2f, 0.7f),   0x0449, EChordVoiceRole::MiddleVoice,  1 },
+		{ TEXT("player3"),  EVoiceTimbreProfile::CrystallineChime, FLinearColor(1.0f, 0.75f, 0.1f),  0x1010, EChordVoiceRole::HighestVoice, 2 },
+		{ TEXT("player4"),  EVoiceTimbreProfile::VortexSweep,      FLinearColor(0.1f, 1.0f, 0.45f),  0x4444, EChordVoiceRole::HighestVoice, 3 },
 
-		// Unit 2 (4–7): South-East Station - Bass & Percussive Groove
-		{ TEXT("player5"),  EVoiceTimbreProfile::SubBassPad,       FLinearColor(0.2f, 0.5f, 1.0f),  0x0481, EChordVoiceRole::LowestVoice,  1 },
-		{ TEXT("player6"),  EVoiceTimbreProfile::SubBassPad,       FLinearColor(0.0f, 1.0f, 0.8f),  0x2041, EChordVoiceRole::MiddleVoice,  2 },
-		{ TEXT("player7"),  EVoiceTimbreProfile::SubBassPad,       FLinearColor(0.3f, 0.2f, 0.9f),  0x0905, EChordVoiceRole::LowestVoice,  3 },
-		{ TEXT("player8"),  EVoiceTimbreProfile::CrystallineChime, FLinearColor(1.0f, 0.6f, 0.0f),  0x1010, EChordVoiceRole::HighestVoice, 2 },
+		// Unit 2 (4–7): South-East Station
+		{ TEXT("player5"),  EVoiceTimbreProfile::SubBassPad,       FLinearColor(0.0f, 0.8f, 1.0f),   0x0481, EChordVoiceRole::LowestVoice,  1 },
+		{ TEXT("player6"),  EVoiceTimbreProfile::WarmPad,          FLinearColor(0.9f, 0.2f, 0.6f),   0x2041, EChordVoiceRole::MiddleVoice,  2 },
+		{ TEXT("player7"),  EVoiceTimbreProfile::CrystallineChime, FLinearColor(1.0f, 0.7f, 0.1f),   0x0905, EChordVoiceRole::LowestVoice,  3 },
+		{ TEXT("player8"),  EVoiceTimbreProfile::VortexSweep,      FLinearColor(0.1f, 1.0f, 0.5f),   0x1010, EChordVoiceRole::HighestVoice, 2 },
 
-		// Unit 3 (8–11): North-East Station - Acoustic Percussion & Chimes
-		{ TEXT("player9"),  EVoiceTimbreProfile::CrystallineChime, FLinearColor(0.9f, 0.8f, 0.1f),  0x5555, EChordVoiceRole::HighestVoice, 3 },
-		{ TEXT("player10"), EVoiceTimbreProfile::CrystallineChime, FLinearColor(1.0f, 0.45f, 0.1f), 0xAAAA, EChordVoiceRole::MiddleVoice,  1 },
-		{ TEXT("player11"), EVoiceTimbreProfile::WarmPad,          FLinearColor(0.9f, 0.1f, 0.5f),  0x4444, EChordVoiceRole::LowestVoice,  2 },
-		{ TEXT("player12"), EVoiceTimbreProfile::WarmPad,          FLinearColor(1.0f, 0.2f, 0.3f),  0x0001, EChordVoiceRole::HighestVoice, 4 },
+		// Unit 3 (8–11): North-East Station
+		{ TEXT("player9"),  EVoiceTimbreProfile::SubBassPad,       FLinearColor(0.1f, 0.7f, 1.0f),   0x5555, EChordVoiceRole::HighestVoice, 3 },
+		{ TEXT("player10"), EVoiceTimbreProfile::WarmPad,          FLinearColor(1.0f, 0.2f, 0.5f),   0xAAAA, EChordVoiceRole::MiddleVoice,  1 },
+		{ TEXT("player11"), EVoiceTimbreProfile::CrystallineChime, FLinearColor(1.0f, 0.85f, 0.1f),  0x4444, EChordVoiceRole::LowestVoice,  2 },
+		{ TEXT("player12"), EVoiceTimbreProfile::VortexSweep,      FLinearColor(0.2f, 1.0f, 0.4f),   0x0001, EChordVoiceRole::HighestVoice, 4 },
 
-		// Unit 4 (12–15): North Station - Harmonic Warm Pads
-		{ TEXT("player13"), EVoiceTimbreProfile::WarmPad,          FLinearColor(0.8f, 0.1f, 0.8f),  0x4108, EChordVoiceRole::LowestVoice,  2 },
-		{ TEXT("player14"), EVoiceTimbreProfile::WarmPad,          FLinearColor(0.6f, 0.1f, 0.9f),  0x0410, EChordVoiceRole::MiddleVoice,  2 },
-		{ TEXT("player15"), EVoiceTimbreProfile::WarmPad,          FLinearColor(1.0f, 0.3f, 0.6f),  0x1084, EChordVoiceRole::HighestVoice, 4 },
-		{ TEXT("player16"), EVoiceTimbreProfile::WarmPad,          FLinearColor(0.7f, 0.2f, 0.7f),  0x4040, EChordVoiceRole::LowestVoice,  1 },
+		// Unit 4 (12–15): North Station
+		{ TEXT("player13"), EVoiceTimbreProfile::SubBassPad,       FLinearColor(0.0f, 0.9f, 0.9f),   0x4108, EChordVoiceRole::LowestVoice,  2 },
+		{ TEXT("player14"), EVoiceTimbreProfile::WarmPad,          FLinearColor(0.8f, 0.1f, 0.9f),   0x0410, EChordVoiceRole::MiddleVoice,  2 },
+		{ TEXT("player15"), EVoiceTimbreProfile::CrystallineChime, FLinearColor(1.0f, 0.65f, 0.15f), 0x1084, EChordVoiceRole::HighestVoice, 4 },
+		{ TEXT("player16"), EVoiceTimbreProfile::VortexSweep,      FLinearColor(0.15f, 1.0f, 0.6f),  0x4040, EChordVoiceRole::LowestVoice,  1 },
 
-		// Unit 5 (16–19): North-West Station - Melodic Leads & Vortex Sweeps
-		{ TEXT("player17"), EVoiceTimbreProfile::WarmPad,          FLinearColor(0.9f, 0.4f, 0.2f),  0x0101, EChordVoiceRole::MiddleVoice,  3 },
-		{ TEXT("player18"), EVoiceTimbreProfile::VortexSweep,      FLinearColor(0.1f, 1.0f, 0.4f),  0x0A28, EChordVoiceRole::HighestVoice, 4 },
-		{ TEXT("player19"), EVoiceTimbreProfile::CrystallineChime, FLinearColor(0.3f, 1.0f, 0.7f),  0x2492, EChordVoiceRole::LowestVoice,  2 },
-		{ TEXT("player20"), EVoiceTimbreProfile::VortexSweep,      FLinearColor(1.0f, 1.0f, 1.0f),  0xD000, EChordVoiceRole::MiddleVoice,  3 },
+		// Unit 5 (16–19): North-West Station
+		{ TEXT("player17"), EVoiceTimbreProfile::SubBassPad,       FLinearColor(0.1f, 0.85f, 1.0f),  0x0101, EChordVoiceRole::MiddleVoice,  3 },
+		{ TEXT("player18"), EVoiceTimbreProfile::WarmPad,          FLinearColor(1.0f, 0.25f, 0.65f), 0x0A28, EChordVoiceRole::HighestVoice, 4 },
+		{ TEXT("player19"), EVoiceTimbreProfile::CrystallineChime, FLinearColor(1.0f, 0.8f, 0.2f),   0x2492, EChordVoiceRole::LowestVoice,  2 },
+		{ TEXT("player20"), EVoiceTimbreProfile::VortexSweep,      FLinearColor(0.2f, 1.0f, 0.55f),  0xD000, EChordVoiceRole::MiddleVoice,  3 },
 
-		// Unit 6 (20–23): South-West Station - Crystalline Resonances & Shimmers
-		{ TEXT("player21"), EVoiceTimbreProfile::CrystallineChime, FLinearColor(0.2f, 0.8f, 1.0f),  0x5050, EChordVoiceRole::MiddleVoice,  2 },
-		{ TEXT("player22"), EVoiceTimbreProfile::WarmPad,          FLinearColor(0.9f, 0.5f, 1.0f),  0x0220, EChordVoiceRole::HighestVoice, 3 },
-		{ TEXT("player23"), EVoiceTimbreProfile::VortexSweep,      FLinearColor(1.0f, 0.8f, 0.3f),  0x1441, EChordVoiceRole::LowestVoice,  4 },
+		// Unit 6 (20–23): South-West Station
+		{ TEXT("player21"), EVoiceTimbreProfile::SubBassPad,       FLinearColor(0.0f, 0.8f, 0.95f),  0x5050, EChordVoiceRole::MiddleVoice,  2 },
+		{ TEXT("player22"), EVoiceTimbreProfile::WarmPad,          FLinearColor(0.95f, 0.2f, 0.8f),  0x0220, EChordVoiceRole::HighestVoice, 3 },
+		{ TEXT("player23"), EVoiceTimbreProfile::CrystallineChime, FLinearColor(1.0f, 0.75f, 0.25f), 0x1441, EChordVoiceRole::LowestVoice,  4 },
 		{ TEXT("player24"), EVoiceTimbreProfile::SubBassPad,       FLinearColor(0.3f, 1.0f, 0.5f),  0x8888, EChordVoiceRole::LowestVoice,  1 }
 	};
 
@@ -107,7 +107,6 @@ void AHarmonicStationActor::ApplyDefaultPresetForIndex()
 		ChannelName = FName(Presets[ClampedIdx].Name);
 	}
 	TimbreProfile = Presets[ClampedIdx].Timbre;
-	StreamColor = Presets[ClampedIdx].Color;
 	RhythmicPatternMask = Presets[ClampedIdx].PatternMask;
 	ChordVoiceRole = Presets[ClampedIdx].VoiceRole;
 	OctaveOffset = Presets[ClampedIdx].OctaveOffset;
@@ -218,10 +217,19 @@ void AHarmonicStationActor::SetPressed(bool bNewPressed)
 	{
 		const float PressDuration = CurrentTime - LastPressTimestamp;
 
-		// TAP TO CUT: If crystal was already active and released after a quick tap, deactivate/cut it!
+		// DOUBLE-TAP TO CUT: Single taps jam freely; a quick second tap within 0.45s cuts the active crystal.
 		if (CrystalActor && CrystalActor->bIsActive && PressDuration > 0.02f && PressDuration <= TapCutMaxDurationSeconds)
 		{
-			CrystalActor->DeactivateCrystal();
+			if ((CurrentTime - LastTapTimestamp) <= 0.45f)
+			{
+				CrystalActor->DeactivateCrystal();
+				LastTapTimestamp = -10.0f;
+			}
+			else
+			{
+				LastTapTimestamp = CurrentTime;
+				CrystalActor->SetCharging(false);
+			}
 		}
 		else if (CrystalActor)
 		{

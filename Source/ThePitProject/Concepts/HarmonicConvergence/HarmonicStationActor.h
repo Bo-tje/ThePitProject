@@ -99,6 +99,8 @@ public:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Station|Runtime")
 	float LastPressTimestamp = 0.0f;
 
+	float LastTapTimestamp = -10.0f;
+
 	UPROPERTY(BlueprintAssignable, Category = "Station|Events")
 	FOnStationPressedChanged OnStationPressedChanged;
 
