@@ -75,7 +75,10 @@ public:
 	bool bUseCustomSpawnRate = false;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Station|Custom Overrides", meta = (ClampMin = "0.0", EditCondition = "bUseCustomSpawnRate"))
-	float SpawnRate = 350.0f;
+	float SpawnRate = 250.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Station|Custom Overrides", meta = (ClampMin = "0.0", EditCondition = "bUseCustomSpawnRate"))
+	float MaxSpawnRate = 750.0f;
 
 	// Fraction of SpawnRate used as the trickle rate while crystal is active
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Station|Custom Overrides", meta = (ClampMin = "0.0", ClampMax = "1.0", EditCondition = "bUseCustomSpawnRate"))
@@ -98,8 +101,6 @@ public:
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Station|Runtime")
 	float LastPressTimestamp = 0.0f;
-
-	float LastTapTimestamp = -10.0f;
 
 	UPROPERTY(BlueprintAssignable, Category = "Station|Events")
 	FOnStationPressedChanged OnStationPressedChanged;

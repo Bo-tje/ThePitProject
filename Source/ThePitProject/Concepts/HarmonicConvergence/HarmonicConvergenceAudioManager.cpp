@@ -50,7 +50,8 @@ void AHarmonicConvergenceAudioManager::BeginPlay()
 			Station->TrickleVortexForce = TrickleVortexForce;
 			if (!Station->bUseCustomSpawnRate)
 			{
-				Station->SpawnRate = StationBeamSpawnRate;
+				Station->SpawnRate = MinBeamSpawnRate;
+				Station->MaxSpawnRate = MaxBeamSpawnRate;
 				Station->TrickleSpawnMultiplier = StationTrickleMultiplier;
 			}
 			if (Station->BeamComponent)
@@ -201,8 +202,11 @@ void AHarmonicConvergenceAudioManager::HandleStationPressedChanged(AHarmonicStat
 			{
 				if (ULightComponent* LightComp = Light->GetLightComponent())
 				{
+					const float TimbreLightBoost = (Station->TimbreProfile == EVoiceTimbreProfile::SubBassPad) ? 1.3f
+						: (Station->TimbreProfile == EVoiceTimbreProfile::CrystallineChime) ? 1.2f
+						: (Station->TimbreProfile == EVoiceTimbreProfile::VortexSweep) ? 1.15f : 1.0f;
 					LightComp->SetLightColor(Station->StreamColor);
-					LightComp->SetIntensity(BeatLightPeakIntensity);
+					LightComp->SetIntensity(BeatLightPeakIntensity * TimbreLightBoost);
 				}
 			}
 		}
@@ -237,6 +241,11 @@ void AHarmonicConvergenceAudioManager::HandleCrystalActivated(AHarmonicCrystalAc
 			}
 		}
 	}
+
+	// Crowd-scaled cooldown: shorter lifespan when more crystals are active (players can pulse to sustain)
+	Crystal->RemainingLifespan = FMath::Max(
+		6.0f,
+		Crystal->ActiveLifespanSeconds / (1.0f + 0.12f * static_cast<float>(AllOtherActiveStations.Num())));
 
 	auto DeactivateOldestIn = [](const TArray<AHarmonicStationActor*>& Candidates)
 	{
@@ -411,7 +420,10 @@ void AHarmonicConvergenceAudioManager::Tick(float DeltaTime)
 			{
 				if (Station && Station->IsCrystalActive() && (Station->RhythmicPatternMask & StepBit))
 				{
-					Station->CrystalActor->TriggerBeatPulse(1.0f);
+					const float PulseStrength = (Station->TimbreProfile == EVoiceTimbreProfile::SubBassPad) ? 1.6f
+						: (Station->TimbreProfile == EVoiceTimbreProfile::VortexSweep) ? 1.5f
+						: (Station->TimbreProfile == EVoiceTimbreProfile::CrystallineChime) ? 1.4f : 1.15f;
+					Station->CrystalActor->TriggerBeatPulse(PulseStrength);
 				}
 			}
 		}

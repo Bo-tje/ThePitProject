@@ -85,9 +85,11 @@ unsigned long lastBeatTickTime       = 0;
 
 char unitOscPath[32];
 uint32_t currentSequence   = 1;
-bool needsAck              = true;
-unsigned long lastSendTime = 0;
-int retryCount             = 0;
+bool needsAck                = true;
+unsigned long lastSendTime   = 0;
+int retryCount               = 0;
+bool hasSyncedWithHost       = false;
+unsigned long lastSyncPingMs = 0;
 
 const unsigned long RETRY_INTERVAL_MS = 40;
 const int MAX_RETRIES                 = 50;
@@ -133,27 +135,12 @@ void applyButtonPressState(int buttonIndex, bool isNowPressed, unsigned long now
 
   if (isNowPressed) {
     button.pressStartTime = now;
-    if (button.lightMode != LIGHT_LOCKED_ACTIVE) {
-      button.lightMode = LIGHT_CHARGING;
-      Serial.printf("[Press] Button %d -> Charging Crystal...\n", buttonIndex + 1);
-    } else {
-      Serial.printf("[Press Active] Button %d -> Tap to Cut or Hold to Recharge\n", buttonIndex + 1);
-    }
+    button.lightMode = LIGHT_CHARGING;
+    Serial.printf("[Press] Button %d -> Stream Active\n", buttonIndex + 1);
   } else {
     button.releaseTime = now;
-    unsigned long pressHoldDurationMs = now - button.pressStartTime;
-    bool wasQuickTapOnActiveCrystal = (button.lightMode == LIGHT_LOCKED_ACTIVE && pressHoldDurationMs <= tapCutMaxMs);
-    bool releasedBeforeFullCharge = (button.lightMode == LIGHT_CHARGING);
-
-    if (wasQuickTapOnActiveCrystal) {
-      button.lightMode = LIGHT_DECAY;
-      Serial.printf("[Tap to Cut] Button %d -> Crystal Deactivated (Cut)\n", buttonIndex + 1);
-    } else if (releasedBeforeFullCharge) {
-      button.lightMode = LIGHT_DECAY;
-      Serial.printf("[Release] Button %d -> Incomplete Charge, Decay\n", buttonIndex + 1);
-    } else {
-      Serial.printf("[Release] Button %d -> Active Stem Sustained\n", buttonIndex + 1);
-    }
+    button.lightMode = LIGHT_DECAY;
+    Serial.printf("[Release] Button %d -> Stream Decay\n", buttonIndex + 1);
   }
 }
 
@@ -180,7 +167,20 @@ void applyLedLinear(int buttonIndex, float linearBrightness) {
   writePwmDuty(buttonIndex, optocouplerCompensatedDuty);
 }
 
+void showErrorBlink(uint8_t buttonMask, unsigned long now, unsigned long periodMs) {
+  float level = ((now / periodMs) % 2 == 0) ? 0.85f : 0.0f;
+  for (int i = 0; i < BUTTON_COUNT; i++) {
+    applyLedLinear(i, (buttonMask & (1 << i)) ? level : 0.0f);
+  }
+}
+
 void updateLighting(unsigned long now) {
+  // Error Code 2: Wi-Fi connected, waiting for UE5 host (/pit/sync) -> Buttons 1+2 blink
+  if (!DEBUG_OFFLINE_MODE && !hasSyncedWithHost) {
+    showErrorBlink(0b0011, now, 600);
+    return;
+  }
+
   bool anyButtonPressed = false;
   bool anyCrystalLocked = false;
   for (int buttonIndex = 0; buttonIndex < BUTTON_COUNT; buttonIndex++) {
@@ -230,37 +230,12 @@ void updateLighting(unsigned long now) {
 
     switch (button.lightMode) {
       case LIGHT_CHARGING: {
+        // Tied strictly to the physical stream/press: bright immediately on press, builds to 100% while held
         unsigned long holdDurationMs = now - button.pressStartTime;
         float chargeProgress = min((float)holdDurationMs / (float)chargeTimeMs, 1.0f);
-        float chargeShimmer = sinf((float)now * 0.045f) * (0.08f * chargeProgress);
-        float chargingBrightness = constrain((chargeProgress * chargeProgress) + chargeShimmer, 0.0f, 1.0f);
-        applyLedLinear(buttonIndex, chargingBrightness);
-
-        if (holdDurationMs >= chargeTimeMs) {
-          int activeCrystalCount = 0;
-          int oldestActiveButtonIndex = -1;
-          unsigned long oldestLockTime = 0xFFFFFFFF;
-
-          for (int otherIndex = 0; otherIndex < BUTTON_COUNT; otherIndex++) {
-            if (BUTTONS[otherIndex].lightMode == LIGHT_LOCKED_ACTIVE) {
-              activeCrystalCount++;
-              if (BUTTONS[otherIndex].lockTime < oldestLockTime) {
-                oldestLockTime = BUTTONS[otherIndex].lockTime;
-                oldestActiveButtonIndex = otherIndex;
-              }
-            }
-          }
-
-          if (activeCrystalCount >= maxActivePerStation && oldestActiveButtonIndex >= 0) {
-            BUTTONS[oldestActiveButtonIndex].lightMode = LIGHT_DECAY;
-            Serial.printf("[Capacity] Max active (%d) reached -> Swapping oldest Button %d\n",
-                          maxActivePerStation, oldestActiveButtonIndex + 1);
-          }
-
-          button.lightMode = LIGHT_LOCKED_ACTIVE;
-          button.lockTime = now;
-          Serial.printf("[Charge Complete] Button %d -> CRYSTAL LOCKED ACTIVE!\n", buttonIndex + 1);
-        }
+        float streamShimmer = sinf((float)now * 0.045f) * (0.06f * chargeProgress);
+        float streamBrightness = constrain(0.65f + (0.35f * chargeProgress) + streamShimmer, 0.0f, 1.0f);
+        applyLedLinear(buttonIndex, streamBrightness);
         break;
       }
 
@@ -359,7 +334,8 @@ void setup() {
 
     Serial.printf("Connecting to Wi-Fi '%s'", ssid);
     while (WiFi.status() != WL_CONNECTED) {
-      delay(300);
+      showErrorBlink(0b0001, millis(), 250); // Error Code 1: No Wi-Fi -> Button 1 fast blink
+      delay(50);
       Serial.print(".");
     }
     Serial.println("\n[Wi-Fi Connected!] ESP32 IP: " + WiFi.localIP().toString());
@@ -373,12 +349,14 @@ void loop() {
   unsigned long now = millis();
 
   if (!DEBUG_OFFLINE_MODE && WiFi.status() != WL_CONNECTED) {
+    hasSyncedWithHost = false;
     WiFi.disconnect();
     delay(200);
     WiFi.begin(ssid, pass);
     unsigned long reconnectStartMs = millis();
     while (WiFi.status() != WL_CONNECTED && millis() - reconnectStartMs < 3000) {
-      delay(200);
+      showErrorBlink(0b0001, millis(), 250); // Error Code 1: Wi-Fi lost -> Button 1 fast blink
+      delay(50);
       Serial.print(".");
     }
     if (WiFi.status() == WL_CONNECTED) {
@@ -428,6 +406,7 @@ void loop() {
             needsAck = false;
           }
         } else if (incomingOsc.match("/pit/sync")) {
+          hasSyncedWithHost = true;
           if (incomingOsc.isInt(0)) chargeTimeMs = (unsigned long)max(100, (int)incomingOsc.getInt(0));
           if (incomingOsc.isInt(1)) tapCutMaxMs = (unsigned long)max(50, (int)incomingOsc.getInt(1));
           if (incomingOsc.isInt(2)) idleToAttractMs = (unsigned long)max(500, (int)incomingOsc.getInt(2));
@@ -505,6 +484,11 @@ void loop() {
       needsAck = false;
       Serial.println("[OSC Battery Saver] Radio paused until next button press or sync.");
     }
+  }
+
+  if (!DEBUG_OFFLINE_MODE && (now - lastSyncPingMs >= (hasSyncedWithHost ? 15000UL : 3000UL))) {
+    lastSyncPingMs = now;
+    sendStatePacket();
   }
 
   delay(2);

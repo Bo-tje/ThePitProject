@@ -64,40 +64,40 @@ void AHarmonicStationActor::ApplyDefaultPresetForIndex()
 	};
 
 	static const FStationPreset Presets[24] = {
-		// Unit 1 (0–3): South Station - Diverse Mini-Band (Sub, Pad, Chime, Sweep)
-		{ TEXT("player1"),  EVoiceTimbreProfile::SubBassPad,       FLinearColor(0.0f, 0.9f, 1.0f),   0x1111, EChordVoiceRole::LowestVoice,  0 },
-		{ TEXT("player2"),  EVoiceTimbreProfile::WarmPad,          FLinearColor(1.0f, 0.2f, 0.7f),   0x0449, EChordVoiceRole::MiddleVoice,  1 },
-		{ TEXT("player3"),  EVoiceTimbreProfile::CrystallineChime, FLinearColor(1.0f, 0.75f, 0.1f),  0x1010, EChordVoiceRole::HighestVoice, 2 },
-		{ TEXT("player4"),  EVoiceTimbreProfile::VortexSweep,      FLinearColor(0.1f, 1.0f, 0.45f),  0x4444, EChordVoiceRole::HighestVoice, 3 },
+		// Unit 1 (0–3): South Station - Beats / Sub-Bass
+		{ TEXT("player1"),  EVoiceTimbreProfile::SubBassPad,       FLinearColor(0.0f, 0.9f, 1.0f),  0x1111, EChordVoiceRole::LowestVoice,  0 },
+		{ TEXT("player2"),  EVoiceTimbreProfile::SubBassPad,       FLinearColor(0.0f, 0.6f, 1.0f),  0x0449, EChordVoiceRole::LowestVoice,  1 },
+		{ TEXT("player3"),  EVoiceTimbreProfile::SubBassPad,       FLinearColor(0.1f, 0.4f, 1.0f),  0x1010, EChordVoiceRole::MiddleVoice,  2 },
+		{ TEXT("player4"),  EVoiceTimbreProfile::SubBassPad,       FLinearColor(0.0f, 0.8f, 0.9f),  0x4444, EChordVoiceRole::HighestVoice, 3 },
 
-		// Unit 2 (4–7): South-East Station
-		{ TEXT("player5"),  EVoiceTimbreProfile::SubBassPad,       FLinearColor(0.0f, 0.8f, 1.0f),   0x0481, EChordVoiceRole::LowestVoice,  1 },
-		{ TEXT("player6"),  EVoiceTimbreProfile::WarmPad,          FLinearColor(0.9f, 0.2f, 0.6f),   0x2041, EChordVoiceRole::MiddleVoice,  2 },
-		{ TEXT("player7"),  EVoiceTimbreProfile::CrystallineChime, FLinearColor(1.0f, 0.7f, 0.1f),   0x0905, EChordVoiceRole::LowestVoice,  3 },
-		{ TEXT("player8"),  EVoiceTimbreProfile::VortexSweep,      FLinearColor(0.1f, 1.0f, 0.5f),   0x1010, EChordVoiceRole::HighestVoice, 2 },
+		// Unit 2 (4–7): South-East Station - Bass & Percussive Groove
+		{ TEXT("player5"),  EVoiceTimbreProfile::SubBassPad,       FLinearColor(0.2f, 0.5f, 1.0f),  0x0481, EChordVoiceRole::LowestVoice,  1 },
+		{ TEXT("player6"),  EVoiceTimbreProfile::SubBassPad,       FLinearColor(0.0f, 1.0f, 0.8f),  0x2041, EChordVoiceRole::MiddleVoice,  2 },
+		{ TEXT("player7"),  EVoiceTimbreProfile::SubBassPad,       FLinearColor(0.3f, 0.2f, 0.9f),  0x0905, EChordVoiceRole::LowestVoice,  3 },
+		{ TEXT("player8"),  EVoiceTimbreProfile::CrystallineChime, FLinearColor(1.0f, 0.6f, 0.0f),  0x1010, EChordVoiceRole::HighestVoice, 2 },
 
-		// Unit 3 (8–11): North-East Station
-		{ TEXT("player9"),  EVoiceTimbreProfile::SubBassPad,       FLinearColor(0.1f, 0.7f, 1.0f),   0x5555, EChordVoiceRole::HighestVoice, 3 },
-		{ TEXT("player10"), EVoiceTimbreProfile::WarmPad,          FLinearColor(1.0f, 0.2f, 0.5f),   0xAAAA, EChordVoiceRole::MiddleVoice,  1 },
-		{ TEXT("player11"), EVoiceTimbreProfile::CrystallineChime, FLinearColor(1.0f, 0.85f, 0.1f),  0x4444, EChordVoiceRole::LowestVoice,  2 },
-		{ TEXT("player12"), EVoiceTimbreProfile::VortexSweep,      FLinearColor(0.2f, 1.0f, 0.4f),   0x0001, EChordVoiceRole::HighestVoice, 4 },
+		// Unit 3 (8–11): North-East Station - Acoustic Percussion & Chimes
+		{ TEXT("player9"),  EVoiceTimbreProfile::CrystallineChime, FLinearColor(0.9f, 0.8f, 0.1f),  0x5555, EChordVoiceRole::HighestVoice, 3 },
+		{ TEXT("player10"), EVoiceTimbreProfile::CrystallineChime, FLinearColor(1.0f, 0.45f, 0.1f), 0xAAAA, EChordVoiceRole::MiddleVoice,  1 },
+		{ TEXT("player11"), EVoiceTimbreProfile::WarmPad,          FLinearColor(0.9f, 0.1f, 0.5f),  0x4444, EChordVoiceRole::LowestVoice,  2 },
+		{ TEXT("player12"), EVoiceTimbreProfile::WarmPad,          FLinearColor(1.0f, 0.2f, 0.3f),  0x0001, EChordVoiceRole::HighestVoice, 4 },
 
-		// Unit 4 (12–15): North Station
-		{ TEXT("player13"), EVoiceTimbreProfile::SubBassPad,       FLinearColor(0.0f, 0.9f, 0.9f),   0x4108, EChordVoiceRole::LowestVoice,  2 },
-		{ TEXT("player14"), EVoiceTimbreProfile::WarmPad,          FLinearColor(0.8f, 0.1f, 0.9f),   0x0410, EChordVoiceRole::MiddleVoice,  2 },
-		{ TEXT("player15"), EVoiceTimbreProfile::CrystallineChime, FLinearColor(1.0f, 0.65f, 0.15f), 0x1084, EChordVoiceRole::HighestVoice, 4 },
-		{ TEXT("player16"), EVoiceTimbreProfile::VortexSweep,      FLinearColor(0.15f, 1.0f, 0.6f),  0x4040, EChordVoiceRole::LowestVoice,  1 },
+		// Unit 4 (12–15): North Station - Harmonic Warm Pads
+		{ TEXT("player13"), EVoiceTimbreProfile::WarmPad,          FLinearColor(0.8f, 0.1f, 0.8f),  0x4108, EChordVoiceRole::LowestVoice,  2 },
+		{ TEXT("player14"), EVoiceTimbreProfile::WarmPad,          FLinearColor(0.6f, 0.1f, 0.9f),  0x0410, EChordVoiceRole::MiddleVoice,  2 },
+		{ TEXT("player15"), EVoiceTimbreProfile::WarmPad,          FLinearColor(1.0f, 0.3f, 0.6f),  0x1084, EChordVoiceRole::HighestVoice, 4 },
+		{ TEXT("player16"), EVoiceTimbreProfile::WarmPad,          FLinearColor(0.7f, 0.2f, 0.7f),  0x4040, EChordVoiceRole::LowestVoice,  1 },
 
-		// Unit 5 (16–19): North-West Station
-		{ TEXT("player17"), EVoiceTimbreProfile::SubBassPad,       FLinearColor(0.1f, 0.85f, 1.0f),  0x0101, EChordVoiceRole::MiddleVoice,  3 },
-		{ TEXT("player18"), EVoiceTimbreProfile::WarmPad,          FLinearColor(1.0f, 0.25f, 0.65f), 0x0A28, EChordVoiceRole::HighestVoice, 4 },
-		{ TEXT("player19"), EVoiceTimbreProfile::CrystallineChime, FLinearColor(1.0f, 0.8f, 0.2f),   0x2492, EChordVoiceRole::LowestVoice,  2 },
-		{ TEXT("player20"), EVoiceTimbreProfile::VortexSweep,      FLinearColor(0.2f, 1.0f, 0.55f),  0xD000, EChordVoiceRole::MiddleVoice,  3 },
+		// Unit 5 (16–19): North-West Station - Melodic Leads & Vortex Sweeps
+		{ TEXT("player17"), EVoiceTimbreProfile::WarmPad,          FLinearColor(0.9f, 0.4f, 0.2f),  0x0101, EChordVoiceRole::MiddleVoice,  3 },
+		{ TEXT("player18"), EVoiceTimbreProfile::VortexSweep,      FLinearColor(0.1f, 1.0f, 0.4f),  0x0A28, EChordVoiceRole::HighestVoice, 4 },
+		{ TEXT("player19"), EVoiceTimbreProfile::CrystallineChime, FLinearColor(0.3f, 1.0f, 0.7f),  0x2492, EChordVoiceRole::LowestVoice,  2 },
+		{ TEXT("player20"), EVoiceTimbreProfile::VortexSweep,      FLinearColor(1.0f, 1.0f, 1.0f),  0xD000, EChordVoiceRole::MiddleVoice,  3 },
 
-		// Unit 6 (20–23): South-West Station
-		{ TEXT("player21"), EVoiceTimbreProfile::SubBassPad,       FLinearColor(0.0f, 0.8f, 0.95f),  0x5050, EChordVoiceRole::MiddleVoice,  2 },
-		{ TEXT("player22"), EVoiceTimbreProfile::WarmPad,          FLinearColor(0.95f, 0.2f, 0.8f),  0x0220, EChordVoiceRole::HighestVoice, 3 },
-		{ TEXT("player23"), EVoiceTimbreProfile::CrystallineChime, FLinearColor(1.0f, 0.75f, 0.25f), 0x1441, EChordVoiceRole::LowestVoice,  4 },
+		// Unit 6 (20–23): South-West Station - Crystalline Resonances & Shimmers
+		{ TEXT("player21"), EVoiceTimbreProfile::CrystallineChime, FLinearColor(0.2f, 0.8f, 1.0f),  0x5050, EChordVoiceRole::MiddleVoice,  2 },
+		{ TEXT("player22"), EVoiceTimbreProfile::WarmPad,          FLinearColor(0.9f, 0.5f, 1.0f),  0x0220, EChordVoiceRole::HighestVoice, 3 },
+		{ TEXT("player23"), EVoiceTimbreProfile::VortexSweep,      FLinearColor(1.0f, 0.8f, 0.3f),  0x1441, EChordVoiceRole::LowestVoice,  4 },
 		{ TEXT("player24"), EVoiceTimbreProfile::SubBassPad,       FLinearColor(0.3f, 1.0f, 0.5f),  0x8888, EChordVoiceRole::LowestVoice,  1 }
 	};
 
@@ -194,6 +194,18 @@ void AHarmonicStationActor::HandleOSCButtonReleased(FName InChannel)
 	}
 }
 
+static void GetTimbreVisualMultipliers(EVoiceTimbreProfile Profile, float& OutSpawnMult, float& OutVortexMult)
+{
+	switch (Profile)
+	{
+	case EVoiceTimbreProfile::SubBassPad:       OutSpawnMult = 1.8f; OutVortexMult = 0.5f;  break;
+	case EVoiceTimbreProfile::CrystallineChime: OutSpawnMult = 1.2f; OutVortexMult = 0.9f;  break;
+	case EVoiceTimbreProfile::WarmPad:          OutSpawnMult = 1.5f; OutVortexMult = 0.75f; break;
+	case EVoiceTimbreProfile::VortexSweep:      OutSpawnMult = 1.4f; OutVortexMult = 1.35f; break;
+	default:                                    OutSpawnMult = 1.0f; OutVortexMult = 1.0f;  break;
+	}
+}
+
 void AHarmonicStationActor::SetPressed(bool bNewPressed)
 {
 	if (bIsPressed == bNewPressed)
@@ -210,46 +222,38 @@ void AHarmonicStationActor::SetPressed(bool bNewPressed)
 		LastPressTimestamp = CurrentTime;
 		if (CrystalActor)
 		{
+			if (CrystalActor->bIsActive)
+			{
+				// PULSE-TO-SUSTAIN: Pressing an active station feeds it extra lifespan + triggers a big pulse
+				CrystalActor->RemainingLifespan = FMath::Min(
+					CrystalActor->ActiveLifespanSeconds,
+					CrystalActor->RemainingLifespan + CrystalActor->ActiveLifespanSeconds * 0.5f);
+				CrystalActor->TriggerBeatPulse(1.5f);
+			}
 			CrystalActor->SetCharging(true);
 		}
 	}
-	else
+	else if (CrystalActor)
 	{
-		const float PressDuration = CurrentTime - LastPressTimestamp;
-
-		// DOUBLE-TAP TO CUT: Single taps jam freely; a quick second tap within 0.45s cuts the active crystal.
-		if (CrystalActor && CrystalActor->bIsActive && PressDuration > 0.02f && PressDuration <= TapCutMaxDurationSeconds)
-		{
-			if ((CurrentTime - LastTapTimestamp) <= 0.45f)
-			{
-				CrystalActor->DeactivateCrystal();
-				LastTapTimestamp = -10.0f;
-			}
-			else
-			{
-				LastTapTimestamp = CurrentTime;
-				CrystalActor->SetCharging(false);
-			}
-		}
-		else if (CrystalActor)
-		{
-			CrystalActor->SetCharging(false);
-		}
+		CrystalActor->SetCharging(false);
 	}
 
 	if (BeamComponent)
 	{
+		float SpawnMult = 1.0f, VortexMult = 1.0f;
+		GetTimbreVisualMultipliers(TimbreProfile, SpawnMult, VortexMult);
 		if (bIsPressed)
 		{
+			const float StartRate = IsCrystalActive() ? MaxSpawnRate : SpawnRate;
 			BeamComponent->SetVariableVec3(FName(TEXT("User.BeamStartLocation")), GetActorLocation() - GetCrystalWorldLocation());
-			BeamComponent->SetVariableFloat(FName(TEXT("User.mySpawnRate")), SpawnRate);
-			BeamComponent->SetVariableFloat(FName(TEXT("User.myVortexForce")), VortexForce);
+			BeamComponent->SetVariableFloat(FName(TEXT("User.mySpawnRate")), StartRate * SpawnMult);
+			BeamComponent->SetVariableFloat(FName(TEXT("User.myVortexForce")), VortexForce * VortexMult);
 		}
 		else
 		{
 			const bool bCrystalActive = IsCrystalActive();
-			BeamComponent->SetVariableFloat(FName(TEXT("User.mySpawnRate")), bCrystalActive ? SpawnRate * TrickleSpawnMultiplier : 0.0f);
-			BeamComponent->SetVariableFloat(FName(TEXT("User.myVortexForce")), bCrystalActive ? TrickleVortexForce : 0.0f);
+			BeamComponent->SetVariableFloat(FName(TEXT("User.mySpawnRate")), bCrystalActive ? SpawnRate * SpawnMult * TrickleSpawnMultiplier : 0.0f);
+			BeamComponent->SetVariableFloat(FName(TEXT("User.myVortexForce")), bCrystalActive ? TrickleVortexForce * VortexMult : 0.0f);
 		}
 	}
 
@@ -265,12 +269,15 @@ void AHarmonicStationActor::Tick(float DeltaTime)
 		return;
 	}
 
+	float SpawnMult = 1.0f, VortexMult = 1.0f;
+	GetTimbreVisualMultipliers(TimbreProfile, SpawnMult, VortexMult);
+
 	if (bIsPressed)
 	{
 		const float ChargeAlpha = IsCrystalActive() ? 1.0f : FMath::Clamp(GetChargeProgress(), 0.0f, 1.0f);
-		const float Ramp = FMath::Lerp(0.25f, 1.0f, ChargeAlpha);
-		BeamComponent->SetVariableFloat(FName(TEXT("User.mySpawnRate")), SpawnRate * Ramp);
-		BeamComponent->SetVariableFloat(FName(TEXT("User.myVortexForce")), VortexForce * Ramp);
+		const float CurrentSpawnRate = FMath::Lerp(SpawnRate, MaxSpawnRate, ChargeAlpha);
+		BeamComponent->SetVariableFloat(FName(TEXT("User.mySpawnRate")), CurrentSpawnRate * SpawnMult);
+		BeamComponent->SetVariableFloat(FName(TEXT("User.myVortexForce")), VortexForce * VortexMult);
 	}
 	else if (IsCrystalActive())
 	{
@@ -280,8 +287,8 @@ void AHarmonicStationActor::Tick(float DeltaTime)
 			const float Wave = 0.5f + 0.5f * FMath::Sin(GetWorld()->GetTimeSeconds() * 10.0f);
 			WarningPulse = FMath::Lerp(0.35f, 1.15f, Wave);
 		}
-		BeamComponent->SetVariableFloat(FName(TEXT("User.mySpawnRate")), SpawnRate * TrickleSpawnMultiplier * WarningPulse);
-		BeamComponent->SetVariableFloat(FName(TEXT("User.myVortexForce")), TrickleVortexForce * WarningPulse);
+		BeamComponent->SetVariableFloat(FName(TEXT("User.mySpawnRate")), SpawnRate * SpawnMult * TrickleSpawnMultiplier * WarningPulse);
+		BeamComponent->SetVariableFloat(FName(TEXT("User.myVortexForce")), TrickleVortexForce * VortexMult * WarningPulse);
 	}
 }
 
@@ -289,9 +296,11 @@ void AHarmonicStationActor::UpdateBeam()
 {
 	if (BeamComponent && !bIsPressed)
 	{
+		float SpawnMult = 1.0f, VortexMult = 1.0f;
+		GetTimbreVisualMultipliers(TimbreProfile, SpawnMult, VortexMult);
 		const bool bCrystalActive = IsCrystalActive();
-		BeamComponent->SetVariableFloat(FName(TEXT("User.mySpawnRate")), bCrystalActive ? SpawnRate * TrickleSpawnMultiplier : 0.0f);
-		BeamComponent->SetVariableFloat(FName(TEXT("User.myVortexForce")), bCrystalActive ? TrickleVortexForce : 0.0f);
+		BeamComponent->SetVariableFloat(FName(TEXT("User.mySpawnRate")), bCrystalActive ? SpawnRate * SpawnMult * TrickleSpawnMultiplier : 0.0f);
+		BeamComponent->SetVariableFloat(FName(TEXT("User.myVortexForce")), bCrystalActive ? TrickleVortexForce * VortexMult : 0.0f);
 	}
 }
 

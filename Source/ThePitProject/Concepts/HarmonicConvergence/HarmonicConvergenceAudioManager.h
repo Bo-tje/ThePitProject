@@ -80,13 +80,16 @@ public:
 	float CrystalChargeTimeSeconds = 2.0f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Harmonics|Setup", meta = (ClampMin = "1.0"))
-	float CrystalActiveLifespanSeconds = 45.0f;
+	float CrystalActiveLifespanSeconds = 15.0f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Harmonics|Setup", meta = (ClampMin = "0.05", ClampMax = "1.0"))
 	float TapCutMaxDurationSeconds = 0.40f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Harmonics|Setup", meta = (ClampMin = "0.0"))
-	float StationBeamSpawnRate = 350.0f;
+	float MinBeamSpawnRate = 250.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Harmonics|Setup", meta = (ClampMin = "0.0"))
+	float MaxBeamSpawnRate = 750.0f;
 
 	// Fraction of StationBeamSpawnRate used as the trickle rate while a crystal is active
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Harmonics|Setup", meta = (ClampMin = "0.0", ClampMax = "1.0"))
